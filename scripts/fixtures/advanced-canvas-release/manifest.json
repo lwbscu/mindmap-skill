@@ -1,0 +1,9 @@
+{
+  "id": "advanced-canvas",
+  "name": "Advanced Canvas",
+  "version": "6.5.0",
+  "minAppVersion": "1.5.0",
+  "description": "Local fixture for mindmap-skill tests.",
+  "author": "MindMap Test",
+  "isDesktopOnly": false
+}
