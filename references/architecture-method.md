@@ -53,6 +53,18 @@ Recommended roles:
 
 Keep visible labels short. Put longer explanations in subtitles only when the text remains readable.
 
+Recommended status tags:
+
+- `implemented`: confirmed source-backed behavior in the current system
+- `external`: separately operated dependency, runtime, model, simulator, or service
+- `planned`: user-approved next-stage work or intended future integration
+- `unknown`: important fact that still needs evidence
+- `risk`: known constraint, failure mode, or success criterion that can regress
+
+The renderer draws status badges and keeps metadata in the diagram JSON/export.
+If a status matters to the reader, put the human label (`已实现`, `外部依赖`, `拟介入`,
+`待确认`, `风险`) in the node title or subtitle as well.
+
 ## Edge Selection
 
 Use edge relations consistently in notes and labels:

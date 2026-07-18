@@ -2,21 +2,17 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { build } from "vite";
+import { assertValidDiagram } from "../app/diagram-validator.mjs";
 import { renderStandaloneHtml, renderSvg } from "../app/render-svg.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
+const appRoot = path.join(root, "app");
 const dist = path.join(root, "dist");
 const appOut = path.join(dist, "app");
 const examplesOut = path.join(dist, "examples");
 const exportsOut = path.join(dist, "exports");
-
-async function copyFileInto(source, targetDir) {
-  await fs.mkdir(targetDir, { recursive: true });
-  const target = path.join(targetDir, path.basename(source));
-  await fs.copyFile(source, target);
-  return target;
-}
 
 function slugFromTitle(title) {
   return String(title || "mindmap")
@@ -28,36 +24,48 @@ function slugFromTitle(title) {
 await fs.rm(dist, { recursive: true, force: true });
 await fs.mkdir(dist, { recursive: true });
 
-const appFiles = [
-  "index.html",
-  "app.js",
-  "styles.css",
-  "render-svg.mjs",
-  "manifest.webmanifest",
-  "service-worker.js"
-];
-const copiedApp = [];
-for (const file of appFiles) {
-  copiedApp.push(await copyFileInto(path.join(root, "app", file), appOut));
-}
-await fs.cp(path.join(root, "app", "assets"), path.join(appOut, "assets"), { recursive: true });
+await build({
+  root: appRoot,
+  base: "./",
+  publicDir: false,
+  logLevel: process.env.CI ? "info" : "warn",
+  build: {
+    outDir: appOut,
+    emptyOutDir: true,
+    sourcemap: true,
+    target: "es2022",
+    chunkSizeWarningLimit: 1600,
+    rollupOptions: {
+      input: path.join(appRoot, "index.html"),
+      output: {
+        entryFileNames: "assets/app-[hash].js",
+        chunkFileNames: "assets/chunk-[hash].js",
+        assetFileNames: "assets/[name]-[hash][extname]"
+      }
+    }
+  }
+});
+
+await fs.cp(path.join(appRoot, "assets"), path.join(appOut, "assets"), { recursive: true });
+await fs.copyFile(path.join(appRoot, "manifest.webmanifest"), path.join(appOut, "manifest.webmanifest"));
+await fs.copyFile(path.join(appRoot, "service-worker.js"), path.join(appOut, "service-worker.js"));
 
 const exampleNames = (await fs.readdir(path.join(root, "examples")))
   .filter((file) => file.endsWith(".diagram.json"))
   .sort();
 const copiedExamples = [];
 const generated = [];
+await fs.mkdir(examplesOut, { recursive: true });
+await fs.mkdir(exportsOut, { recursive: true });
 for (const file of exampleNames) {
   const source = path.join(root, "examples", file);
-  copiedExamples.push(await copyFileInto(source, examplesOut));
-  const diagram = JSON.parse(await fs.readFile(source, "utf8"));
-  if (diagram.schemaVersion !== "mindmap-app/v1") {
-    throw new Error(`${file} schemaVersion must be mindmap-app/v1`);
-  }
+  const target = path.join(examplesOut, file);
+  await fs.copyFile(source, target);
+  copiedExamples.push(target);
+  const diagram = assertValidDiagram(JSON.parse(await fs.readFile(source, "utf8")));
   const svg = renderSvg(diagram);
   const html = renderStandaloneHtml(diagram, svg);
   const slug = slugFromTitle(diagram.title);
-  await fs.mkdir(exportsOut, { recursive: true });
   const svgPath = path.join(exportsOut, `${slug}.svg`);
   const htmlPath = path.join(exportsOut, `${slug}.html`);
   await fs.writeFile(svgPath, svg, "utf8");
@@ -73,9 +81,7 @@ const redirect = `<!doctype html>
   <meta http-equiv="refresh" content="0; url=./app/">
   <title>MindMap</title>
 </head>
-<body>
-  <a href="./app/">Open MindMap</a>
-</body>
+<body><a href="./app/">Open MindMap</a></body>
 </html>
 `;
 await fs.writeFile(path.join(dist, "index.html"), redirect, "utf8");
@@ -84,9 +90,9 @@ console.log(JSON.stringify({
   ok: true,
   dist,
   copied: {
-    app: copiedApp,
+    app: appOut,
     examples: copiedExamples,
-    assets: [path.join(appOut, "assets", "mindmap.png")]
+    icon: path.join(appOut, "assets", "mindmap.png")
   },
   generated
 }, null, 2));

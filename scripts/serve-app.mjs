@@ -5,7 +5,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const root = path.resolve(__dirname, "..");
+const projectRoot = path.resolve(__dirname, "..");
+const root = process.env.MINDMAP_SERVE_ROOT === "dist" ? path.join(projectRoot, "dist") : projectRoot;
 const requestedPort = Number(process.env.PORT || process.env.MINDMAP_PORT || 5177);
 
 const types = new Map([

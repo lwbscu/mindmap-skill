@@ -1,77 +1,59 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import net from "node:net";
+import { createRequire } from "node:module";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const HOST = "127.0.0.1";
-const FIRST_PORT = Number(process.env.MINDMAP_PORT || 5177);
-const LAST_PORT = FIRST_PORT + 20;
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const root = path.resolve(__dirname, "..");
+const mainPath = path.join(root, "desktop", "main.mjs");
+const logPath = process.env.MINDMAP_OPEN_LOG || path.join(os.homedir(), ".cache", "mindmap", "open-app.log");
+const require = createRequire(import.meta.url);
 
-function appUrl(port) {
-  return `http://${HOST}:${port}/app/`;
+function ensureLogPath() {
+  fs.mkdirSync(path.dirname(logPath), { recursive: true });
 }
 
-function fetchJson(port) {
-  return new Promise((resolve) => {
-    const request = fetch(`http://${HOST}:${port}/examples/rpent-libero-behavior.diagram.json`);
-    request
-      .then((response) => response.ok ? response.json() : undefined)
-      .then((json) => resolve(json?.schemaVersion === "mindmap-app/v1"))
-      .catch(() => resolve(false));
-  });
+function log(message) {
+  ensureLogPath();
+  fs.appendFileSync(logPath, `${new Date().toISOString()} ${message}\n`, "utf8");
 }
 
-function isFree(port) {
-  return new Promise((resolve) => {
-    const socket = net.createConnection({ host: HOST, port });
-    socket.once("connect", () => {
-      socket.destroy();
-      resolve(false);
-    });
-    socket.once("error", () => resolve(true));
-  });
+function logFd() {
+  ensureLogPath();
+  return fs.openSync(logPath, "a");
 }
 
-async function findRunningApp() {
-  for (let port = FIRST_PORT; port <= LAST_PORT; port += 1) {
-    if (await fetchJson(port)) return port;
+function electronBinary() {
+  try {
+    return require("electron");
+  } catch (error) {
+    throw new Error("Electron is not installed. Run `npm install` in /home/lwb/Projects/MindMap first.");
   }
-  return undefined;
 }
 
-async function findFreePort() {
-  for (let port = FIRST_PORT; port <= LAST_PORT; port += 1) {
-    if (await isFree(port)) return port;
-  }
-  throw new Error(`No free port found between ${FIRST_PORT} and ${LAST_PORT}`);
+function electronEnv(extra = {}) {
+  const env = { ...process.env, ...extra };
+  delete env.ELECTRON_RUN_AS_NODE;
+  return env;
 }
 
-async function waitForApp(port) {
-  for (let attempt = 0; attempt < 60; attempt += 1) {
-    if (await fetchJson(port)) return;
-    await new Promise((resolve) => setTimeout(resolve, 150));
-  }
-  throw new Error(`MindMap did not start on ${appUrl(port)}`);
-}
+const electron = electronBinary();
+const stdout = logFd();
+const stderr = logFd();
+const args = ["--class=MindMap", mainPath, ...process.argv.slice(2)];
+const child = spawn(electron, args, {
+  cwd: root,
+  detached: true,
+  env: electronEnv(),
+  stdio: ["ignore", stdout, stderr]
+});
 
-function openBrowser(url) {
-  const command = process.env.BROWSER || "xdg-open";
-  const child = spawn(command, [url], {
-    detached: true,
-    stdio: "ignore"
-  });
-  child.unref();
-}
-
-let port = await findRunningApp();
-if (!port) {
-  port = await findFreePort();
-  const server = spawn(process.execPath, [new URL("./serve-app.mjs", import.meta.url).pathname], {
-    detached: true,
-    env: { ...process.env, MINDMAP_PORT: String(port) },
-    stdio: "ignore"
-  });
-  server.unref();
-  await waitForApp(port);
-}
-
-openBrowser(appUrl(port));
+child.once("error", (error) => {
+  log(`electron spawn failed: ${error.message}`);
+});
+child.unref();
+log(`electron desktop open requested: ${electron} ${args.join(" ")} pid=${child.pid ?? "unknown"}`);
+console.log("MindMap desktop window requested.");

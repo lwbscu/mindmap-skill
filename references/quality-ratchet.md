@@ -24,6 +24,8 @@ Use this gate before finalizing a MindMap diagram or app change.
    - `layers`, `nodes`, and `edges` are arrays.
    - Node IDs are unique.
    - Every edge references existing nodes.
+   - Runtime validator accepts every committed example.
+   - Node `status` and edge `relation` values use known tags.
    - Text is large enough for whole-diagram review.
    - Arrows do not cover node titles, subtitles, or edge labels.
 
@@ -31,6 +33,9 @@ Use this gate before finalizing a MindMap diagram or app change.
    - `npm run check` passes.
    - `npm test` passes.
    - `npm run app:build` passes.
+   - `npm run app:smoke` passes real Electron input checks.
+   - `npm run app:visual` passes desktop, tablet, narrow, and mobile screenshot checks.
+   - `npm run app:render -- examples/<name>.diagram.json` passes for the target diagram.
    - Local app preview or rendered SVG/HTML was inspected, or the blocker is reported.
 
 6. Public release
@@ -47,3 +52,4 @@ Use this gate before finalizing a MindMap diagram or app change.
 - Letting arrows cross important text.
 - Publishing generated artifacts as source.
 - Leaving obsolete workflow instructions in docs.
+- Adding evidence/status metadata that is not validated by tests.

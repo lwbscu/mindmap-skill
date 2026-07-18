@@ -1,25 +1,28 @@
 # MindMap
 
-MindMap is an interactive web app and agent skill for making evidence-based architecture maps. Agents produce a compact diagram JSON file, and the app renders it as a clean, zoomable structure diagram with SVG and standalone HTML exports.
+MindMap is an interactive desktop app and agent skill for making evidence-based architecture maps. Agents produce a compact diagram JSON file, and the app renders it as a clean, zoomable structure diagram with SVG and standalone HTML exports.
 
-MindMap 是一个面向 Claude Code 与 Codex 的交互式结构框图工具。它把用户描述、代码、文档和日志里的可验证事实整理为 `mindmap-app/v1` diagram JSON，并用 Web 小程序渲染成白底大字、分层清晰、箭头不遮挡的结构框图。
+MindMap 是一个面向 Claude Code 与 Codex 的本地桌面结构框图工具。它把用户描述、代码、文档和日志里的可验证事实整理为 `mindmap-app/v1` diagram JSON，并用 Electron 桌面窗口渲染成白底大字、分层清晰、箭头不遮挡的结构框图。
 
 ## Features
 
 - Render architecture diagrams from stable `mindmap-app/v1` JSON.
 - Use large readable text, pastel layer bands, explicit arrow routes, and label backgrounds.
-- Preview diagrams in a browser with zoom, scroll, JSON loading, SVG download, and standalone HTML download.
-- Install MindMap as a local desktop launcher on Linux and as a browser PWA when supported.
+- Switch between MindMap, dependency, and architecture views over one shared graph, with per-view camera, layout, filters, hidden state, and saved views.
+- Work in a focused infinite canvas with rectangle/lasso selection, multi-node dragging, pan/zoom, ports, grouping, grid snapping, search, minimap, and responsive inspectors.
+- Edit nodes and relations through the inspector, use 100-step undo/redo and continuous paste offsets, run ELK auto-layout in a Worker, and export SVG, PNG, PDF, JSON, standalone HTML, or Mermaid.
+- Validate diagrams at script runtime, including every example, node IDs, edge references, status tags, and relation tags.
+- Install MindMap as a local desktop launcher on Linux.
 - Publish the static app to GitHub Pages without runtime dependencies.
 - Keep architecture claims evidence-backed and mark unsupported facts as `Unknown / 待确认`.
 
 ## Requirements
 
 - Node.js 20 or newer
-- A modern browser for interactive preview
+- npm dependencies installed with `npm install`
 - Claude Code or Codex for skill-driven diagram generation
 
-The app and scripts use Node.js built-in modules only. There are no npm runtime dependencies.
+The static renderer scripts use Node.js built-in modules. The local desktop window uses Electron as a development dependency.
 
 ## Installation
 
@@ -43,13 +46,13 @@ The skill produces or updates a diagram JSON file, then uses the MindMap app for
 
 ## App Usage
 
-Start the local app:
+Start the local desktop window:
 
 ```bash
-npm run app:serve
+npm run app:open
 ```
 
-Open the printed `/app/` URL in a browser. The default example is [`examples/rpent-libero-behavior.diagram.json`](examples/rpent-libero-behavior.diagram.json). Use **打开 JSON** in the app to load another diagram file.
+The normal entry is the Electron desktop window. It loads local files through the `mindmap://` protocol and does not start a `127.0.0.1` server. Use `npm run app:serve` only when debugging the static web server directly. The default example is [`examples/rpent-libero-behavior.diagram.json`](examples/rpent-libero-behavior.diagram.json), currently covering the RPent module architecture, BEHAVIOR first-pass integration, and next-stage planned interventions. Use **打开** to load another diagram; switch among **MindMap / 依赖图 / 架构图**; and use the left navigator, minimap, and right inspector to edit details, relations, evidence, risks, geometry, colors, and view filters. Drag empty space to marquee-select, drag right-to-left for crossing selection, hold `Alt` for lasso, and hold `Shift` to toggle selection. Use **连线** or drag from ports to create relations, `Space`/middle mouse to pan, `Ctrl/Cmd` + wheel to zoom around the pointer, and standard copy/paste/undo shortcuts before exporting.
 
 Install a Linux desktop launcher so MindMap appears in Applications:
 
@@ -57,7 +60,7 @@ Install a Linux desktop launcher so MindMap appears in Applications:
 npm run app:install-desktop
 ```
 
-After installation, search for **MindMap** in Applications. The launcher starts the local app server when needed and opens the app in your browser.
+After installation, search for **MindMap** in Applications. The launcher opens the Electron desktop window directly; it does not open a browser tab or start the local debug server.
 
 Open MindMap from the command line using the same launcher behavior:
 
@@ -71,7 +74,7 @@ Remove the desktop launcher:
 npm run app:uninstall-desktop
 ```
 
-The app also includes a web manifest, service worker, and SVG icon so supported browsers can install it from the hosted `/app/` page.
+The app also includes a web manifest, service worker, and PNG application icon for hosted `/app/` deployments.
 
 Build the GitHub Pages artifact:
 
@@ -85,6 +88,12 @@ Render the default example to standalone SVG and HTML:
 npm run app:render
 ```
 
+Validate and render a specific diagram:
+
+```bash
+npm run app:render -- examples/rpent-libero-behavior.diagram.json
+```
+
 ## Diagram Format
 
 MindMap diagrams use `schemaVersion: "mindmap-app/v1"` with these top-level fields:
@@ -93,8 +102,19 @@ MindMap diagrams use `schemaVersion: "mindmap-app/v1"` with these top-level fiel
 - `layers`
 - `nodes`
 - `edges`
+- optional `activeViewId`, `views`, and `savedViews`
 
 Nodes use absolute layout fields such as `id`, `title`, `subtitle`, `x`, `y`, `width`, and `height`. Edges support `from`, `to`, side anchors, explicit `waypoints`, labels, and label positions.
+
+Older `mindmap-app/v1` files without `views` open as the default architecture view and are compacted for readable whole-diagram preview. The app adds MindMap and dependency views in memory without changing the shared top-level nodes and edges.
+
+Diagrams may also carry evidence metadata:
+
+- Node `status`: `implemented`, `external`, `planned`, `unknown`, or `risk`.
+- Edge `relation`: `calls`, `reads`, `writes`, `routes`, `guards`, `evaluates`, and other known relation tags.
+- Node/edge `evidence`: compact source strings such as `src/file.ts:42` or `user: ...`.
+
+The renderer shows status as a compact badge. Evidence metadata stays in JSON and exported artifacts, while visible labels are edited directly on the canvas. When a status is central to the story, it is still helpful to include the human label in node text: `已实现`, `外部依赖`, `拟介入`, `待确认`, or `风险`.
 
 See [`references/diagram-schema.md`](references/diagram-schema.md) for the contract.
 
@@ -103,10 +123,12 @@ See [`references/diagram-schema.md`](references/diagram-schema.md) for the contr
 ```bash
 npm run check
 npm test
+npm run app:smoke
+npm run app:visual
 npm run app:build
 ```
 
-The test suite validates the default example, renders SVG/HTML, checks key architecture labels, and builds the static site.
+The test suite validates all examples, renders SVG/HTML, exercises geometry, camera, history, clipboard remapping, view migration, shortest paths and ELK layout, then runs real Electron input smoke tests. `npm run app:visual` captures 1440x900, 1024x768, 760x720, and 390x760 responsive screenshots.
 
 ## License
 

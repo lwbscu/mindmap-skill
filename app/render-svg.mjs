@@ -1,3 +1,5 @@
+import { validateDiagram } from "./diagram-validator.mjs";
+
 const XML_ESCAPE = /[&<>"']/g;
 const XML_MAP = {
   "&": "&amp;",
@@ -7,12 +9,43 @@ const XML_MAP = {
   "'": "&apos;"
 };
 
+const STATUS_LABELS = new Map([
+  ["implemented", "已实现"],
+  ["external", "外部依赖"],
+  ["planned", "拟介入"],
+  ["unknown", "待确认"],
+  ["risk", "风险"]
+]);
+
 function esc(value) {
   return String(value ?? "").replace(XML_ESCAPE, (char) => XML_MAP[char]);
 }
 
 function cssText(value) {
   return String(value ?? "").replace(/[<>{}]/g, "");
+}
+
+function attr(value) {
+  return esc(value).replace(/`/g, "");
+}
+
+function assertDiagram(diagram) {
+  const result = validateDiagram(diagram);
+  if (result && result.ok === false) {
+    throw new Error(`Invalid MindMap diagram:\n${result.errors.join("\n")}`);
+  }
+  return diagram;
+}
+
+function normalizeStatus(status) {
+  if (!status) return "";
+  const key = String(status).trim().toLowerCase();
+  return STATUS_LABELS.has(key) ? key : "unknown";
+}
+
+function statusLabel(status) {
+  const key = normalizeStatus(status);
+  return key ? STATUS_LABELS.get(key) : "";
 }
 
 function center(node) {
@@ -91,6 +124,33 @@ function linePoint(points, ratio = 0.5) {
   return points.at(-1);
 }
 
+function roundedPolyline(points, radius = 18) {
+  if (points.length < 3) {
+    return points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
+  }
+  const commands = [`M ${points[0].x} ${points[0].y}`];
+  for (let index = 1; index < points.length - 1; index += 1) {
+    const previous = points[index - 1];
+    const current = points[index];
+    const next = points[index + 1];
+    const incoming = Math.hypot(current.x - previous.x, current.y - previous.y);
+    const outgoing = Math.hypot(next.x - current.x, next.y - current.y);
+    const localRadius = Math.min(radius, incoming / 2, outgoing / 2);
+    const before = {
+      x: current.x + (previous.x - current.x) * (localRadius / incoming || 0),
+      y: current.y + (previous.y - current.y) * (localRadius / incoming || 0)
+    };
+    const after = {
+      x: current.x + (next.x - current.x) * (localRadius / outgoing || 0),
+      y: current.y + (next.y - current.y) * (localRadius / outgoing || 0)
+    };
+    commands.push(`L ${before.x} ${before.y}`, `Q ${current.x} ${current.y} ${after.x} ${after.y}`);
+  }
+  const last = points.at(-1);
+  commands.push(`L ${last.x} ${last.y}`);
+  return commands.join(" ");
+}
+
 function edgePath(edge, source, target) {
   const fromSide = edge.fromSide ?? sideFor(source, target, true);
   const toSide = edge.toSide ?? sideFor(source, target, false);
@@ -101,7 +161,7 @@ function edgePath(edge, source, target) {
 
   if (waypoints.length > 0) {
     return {
-      d: points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" "),
+      d: roundedPolyline(points, edge.cornerRadius ?? 18),
       labelPoint: linePoint(points, edge.labelRatio ?? 0.5)
     };
   }
@@ -120,10 +180,19 @@ function edgePath(edge, source, target) {
       labelPoint: { x: midX, y: (a.y + b.y) / 2 }
     };
   }
-  return {
-    d: `M ${a.x} ${a.y} L ${b.x} ${b.y}`,
-    labelPoint: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
-  };
+  const horizontal = fromSide === "left" || fromSide === "right";
+  const bend = horizontal
+    ? Math.max(48, Math.abs(b.x - a.x) * 0.45)
+    : Math.max(48, Math.abs(b.y - a.y) * 0.45);
+  return horizontal
+    ? {
+      d: `M ${a.x} ${a.y} C ${a.x + (fromSide === "right" ? bend : -bend)} ${a.y}, ${b.x + (toSide === "left" ? -bend : bend)} ${b.y}, ${b.x} ${b.y}`,
+      labelPoint: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+    }
+    : {
+      d: `M ${a.x} ${a.y} C ${a.x} ${a.y + (fromSide === "bottom" ? bend : -bend)}, ${b.x} ${b.y + (toSide === "top" ? -bend : bend)}, ${b.x} ${b.y}`,
+      labelPoint: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+    };
 }
 
 function textLine(text, x, y, opts = {}) {
@@ -151,60 +220,109 @@ function renderMultiline(lines, x, firstY, opts = {}) {
   return lines.map((line, index) => textLine(line, x, firstY + index * (opts.lineHeight ?? 31), opts)).join("\n");
 }
 
-function renderNode(node, style) {
-  const stroke = node.stroke
-    ?? (node.kind === "data" ? style.dataStroke : node.kind === "risk" ? style.riskStroke : style.nodeStroke);
-  const rx = node.radius ?? 6;
-  const titleSize = node.titleSize ?? 38;
-  const subtitleSize = node.subtitleSize ?? (node.subtitle && node.subtitle.length > 28 ? 22 : 25);
-  const subtitleLines = Array.isArray(node.subtitle) ? node.subtitle : (node.subtitle ? [node.subtitle] : []);
-  const blockHeight = titleSize + (subtitleLines.length ? 16 + subtitleLines.length * 30 : 0);
-  const titleY = node.y + node.height / 2 - blockHeight / 2 + titleSize / 2;
-  const subtitleY = titleY + titleSize / 2 + 24;
+function statusColors(status) {
+  const key = normalizeStatus(status);
+  if (key === "implemented") return { fill: "#dcfce7", stroke: "#16a34a", text: "#14532d" };
+  if (key === "external") return { fill: "#e0f2fe", stroke: "#0284c7", text: "#0c4a6e" };
+  if (key === "planned") return { fill: "#fef3c7", stroke: "#d97706", text: "#713f12" };
+  if (key === "risk") return { fill: "#fee2e2", stroke: "#dc2626", text: "#7f1d1d" };
+  if (key === "unknown") return { fill: "#f4f4f5", stroke: "#71717a", text: "#27272a" };
+  return null;
+}
+
+function renderStatusBadge(node, style, x, y) {
+  const label = statusLabel(node.status);
+  const colors = statusColors(node.status);
+  if (!label || !colors) return "";
+  const size = node.statusSize ?? 17;
+  const width = estimateTextWidth(label, size) + 20;
+  const height = size + 10;
   return [
-    `<rect x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" rx="${rx}" fill="${esc(node.fill ?? style.nodeFill)}" stroke="${esc(stroke)}" stroke-width="${node.strokeWidth ?? 4}"/>`,
-    textLine(node.title, node.x + node.width / 2, titleY, { size: titleSize, fill: style.text, weight: node.titleWeight ?? 760 }),
-    subtitleLines.length ? renderMultiline(subtitleLines, node.x + node.width / 2, subtitleY, {
+    `<rect class="node-status" x="${x - width}" y="${y}" width="${width}" height="${height}" rx="5" fill="${esc(colors.fill)}" stroke="${esc(colors.stroke)}" stroke-width="1.5"/>`,
+    textLine(label, x - width / 2, y + height / 2 + 1, {
+      size,
+      weight: 760,
+      fill: colors.text || style.text
+    })
+  ].join("\n");
+}
+
+function nodeIconLabel(node) {
+  if (node.icon) return String(node.icon).slice(0, 5).toUpperCase();
+  if (node.kind === "data") return "DATA";
+  if (node.kind === "risk" || node.status === "risk") return "RISK";
+  if (node.status === "external") return "EXT";
+  if (node.status === "planned") return "PLAN";
+  if (node.status === "unknown") return "?";
+  if (/runtime|runner|provider/i.test(node.title)) return "RUN";
+  if (/schema|spec|registry|prompt|toolkit/i.test(node.title)) return "API";
+  if (/output|stage|result/i.test(node.title)) return "OUT";
+  return "MOD";
+}
+
+function renderNode(node, style, layer) {
+  const stroke = node.stroke
+    ?? (node.kind === "data" ? style.dataStroke : node.kind === "risk" ? style.riskStroke : layer?.stroke ?? style.nodeStroke);
+  const accent = node.accent ?? stroke;
+  const rx = Math.min(8, node.radius ?? 7);
+  const requestedTitleSize = node.titleSize ?? 36;
+  const requestedSubtitleSize = node.subtitleSize ?? (node.subtitle && node.subtitle.length > 28 ? 21 : 23);
+  const subtitleLines = (Array.isArray(node.subtitle) ? node.subtitle : (node.subtitle ? [node.subtitle] : [])).slice(0, 2);
+  const iconSize = Math.max(42, Math.min(56, node.height - 24));
+  const iconX = node.x + 16;
+  const iconY = node.y + (node.height - iconSize) / 2;
+  const textX = iconX + iconSize + 18;
+  const contentWidth = Math.max(80, node.x + node.width - textX - 18);
+  const titleWidth = Math.max(1, estimateTextWidth(node.title, requestedTitleSize));
+  const subtitleWidth = Math.max(1, ...subtitleLines.map((line) => estimateTextWidth(line, requestedSubtitleSize)));
+  const titleSize = Math.max(20, Math.min(requestedTitleSize, requestedTitleSize * contentWidth / titleWidth));
+  const subtitleSize = Math.max(15, Math.min(requestedSubtitleSize, requestedSubtitleSize * contentWidth / subtitleWidth));
+  const titleY = node.y + (subtitleLines.length ? node.height * 0.37 : node.height / 2);
+  const subtitleY = node.y + node.height * 0.68;
+  const content = [
+    `<rect class="node-card" x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" rx="${rx}" fill="${esc(node.fill ?? style.nodeFill)}" stroke="${esc(style.nodeBorder)}" stroke-width="${node.strokeWidth ?? 2}" filter="url(#node-shadow)"/>`,
+    `<path class="node-accent" d="M ${node.x + rx} ${node.y + 1} H ${node.x + 8} Q ${node.x + 1} ${node.y + 1} ${node.x + 1} ${node.y + rx} V ${node.y + node.height - rx} Q ${node.x + 1} ${node.y + node.height - 1} ${node.x + 8} ${node.y + node.height - 1} H ${node.x + rx}" fill="${esc(accent)}"/>`,
+    `<rect class="node-icon" x="${iconX}" y="${iconY}" width="${iconSize}" height="${iconSize}" rx="${Math.min(8, iconSize / 6)}" fill="${esc(accent)}"/>`,
+    textLine(nodeIconLabel(node), iconX + iconSize / 2, iconY + iconSize / 2 + 1, { size: Math.max(14, iconSize * 0.3), fill: "#ffffff", weight: 850 }),
+    textLine(node.title, textX, titleY, { anchor: "start", size: titleSize, fill: node.titleFill ?? style.text, weight: node.titleWeight ?? 780 }),
+    subtitleLines.length ? renderMultiline(subtitleLines, textX, subtitleY, {
+      anchor: "start",
       size: subtitleSize,
       weight: node.subtitleWeight ?? 520,
       fill: node.subtitleFill ?? style.muted,
-      lineHeight: node.subtitleLineHeight ?? 31
-    }) : ""
+      lineHeight: node.subtitleLineHeight ?? 27
+    }) : "",
+    renderStatusBadge(node, style, node.x + node.width - 10, node.y + node.height - (node.statusSize ?? 17) - 16)
   ].join("\n");
+  return `<g class="mindmap-node status-${attr(normalizeStatus(node.status) || "none")}" data-node-id="${attr(node.id)}" data-layer-id="${attr(node.layer ?? "")}" tabindex="0" role="button" aria-label="${attr(node.title)}">\n${content}\n</g>`;
 }
 
 function renderLayer(layer, style) {
   const fill = layer.fill ?? style.panelFill;
   const stroke = layer.stroke ?? style.panelStroke;
-  const band = `<rect x="${layer.x}" y="${layer.y}" width="${layer.width}" height="${layer.height}" rx="${layer.radius ?? 16}" fill="${esc(fill)}" stroke="${esc(stroke)}" stroke-width="${layer.strokeWidth ?? 3}"/>`;
+  const band = `<rect class="layer-band" x="${layer.x}" y="${layer.y}" width="${layer.width}" height="${layer.height}" rx="${Math.min(8, layer.radius ?? 8)}" fill="${esc(fill)}" fill-opacity="${layer.fillOpacity ?? 0.42}" stroke="${esc(stroke)}" stroke-width="${layer.strokeWidth ?? 2}"/>`;
   if (layer.labelMode === "tab") {
-    const tabWidth = layer.labelWidth ?? 210;
-    const tabHeight = layer.labelHeight ?? Math.min(86, layer.height - 24);
-    const tabX = layer.labelX ?? 36;
-    const tabY = layer.labelY ?? (layer.y + (layer.height - tabHeight) / 2);
-    const notch = Math.min(36, tabWidth / 5);
-    const points = [
-      [tabX, tabY],
-      [tabX + tabWidth - notch, tabY],
-      [tabX + tabWidth, tabY + tabHeight / 2],
-      [tabX + tabWidth - notch, tabY + tabHeight],
-      [tabX, tabY + tabHeight],
-      [tabX + notch, tabY + tabHeight / 2]
-    ].map((point) => point.join(",")).join(" ");
-    return [
+    const labelSize = layer.labelSize ?? 25;
+    const tabWidth = layer.labelWidth ?? Math.max(110, estimateTextWidth(layer.label, labelSize) + 34);
+    const tabHeight = layer.labelHeight ?? 40;
+    const tabX = layer.labelX ?? layer.x + 18;
+    const tabY = layer.labelY ?? layer.y - tabHeight / 2;
+    const content = [
       band,
-      `<polygon points="${points}" fill="${esc(layer.tabFill ?? fill)}" stroke="${esc(stroke)}" stroke-width="${layer.strokeWidth ?? 3}"/>`,
-      textLine(layer.label, tabX + tabWidth / 2 + 8, tabY + tabHeight / 2 + 1, {
-        size: layer.labelSize ?? 31,
-        weight: 760,
-        fill: style.text
+      `<rect class="layer-tag" x="${tabX}" y="${tabY}" width="${tabWidth}" height="${tabHeight}" rx="6" fill="#ffffff" stroke="${esc(stroke)}" stroke-width="${layer.strokeWidth ?? 2}"/>`,
+      textLine(layer.label, tabX + tabWidth / 2, tabY + tabHeight / 2 + 1, {
+        size: labelSize,
+        weight: 780,
+        fill: stroke
       })
     ].join("\n");
+    return `<g class="mindmap-layer" data-layer-id="${attr(layer.id)}" tabindex="0" role="button" aria-label="${attr(layer.label)}">\n${content}\n</g>`;
   }
-  return [
+  const content = [
     band,
-    textLine(layer.label, layer.x + 36, layer.y + 48, { anchor: "start", size: 32, weight: 800, fill: style.text })
+    textLine(layer.label, layer.x + 22, layer.y + 32, { anchor: "start", size: 26, weight: 800, fill: stroke })
   ].join("\n");
+  return `<g class="mindmap-layer" data-layer-id="${attr(layer.id)}" tabindex="0" role="button" aria-label="${attr(layer.label)}">\n${content}\n</g>`;
 }
 
 function renderSeparator(separator, style, width) {
@@ -213,7 +331,7 @@ function renderSeparator(separator, style, width) {
   return `<line x1="${x1}" y1="${separator.y}" x2="${x2}" y2="${separator.y}" stroke="${esc(separator.stroke ?? style.separator)}" stroke-width="${separator.strokeWidth ?? 4}" stroke-dasharray="${esc(separator.dash ?? "3 12")}" stroke-linecap="round"/>`;
 }
 
-function renderEdge(edge, nodesById, style) {
+function renderEdge(edge, nodesById, style, index = 0) {
   const from = nodesById.get(edge.from);
   const to = nodesById.get(edge.to);
   if (!from || !to) {
@@ -234,52 +352,62 @@ function renderEdge(edge, nodesById, style) {
     : "";
   const stroke = edge.stroke ?? style.edge;
   const marker = stroke === style.riskStroke || stroke === "#ef4444" ? "arrow-risk" : "arrow";
-  return [
-    `<path d="${path.d}" fill="none" stroke="${esc(stroke)}" stroke-width="${edge.strokeWidth ?? 4}" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#${marker})"/>`,
+  const edgeId = edge.id ?? `${edge.from}->${edge.to}:${index}`;
+  const content = [
+    `<path class="edge-path" d="${path.d}" fill="none" stroke="${esc(stroke)}" stroke-width="${edge.strokeWidth ?? 3}" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#${marker})"/>`,
     label
   ].join("\n");
+  return `<g class="mindmap-edge" data-edge-id="${attr(edgeId)}" data-edge-index="${index}" data-from="${attr(edge.from)}" data-to="${attr(edge.to)}" data-relation="${attr(edge.relation ?? "")}" tabindex="0" role="button" aria-label="${attr(edge.label ?? `${edge.from} to ${edge.to}`)}">\n${content}\n</g>`;
 }
 
 export function renderSvg(blueprint) {
+  assertDiagram(blueprint);
   const canvas = blueprint.canvas ?? {};
   const style = {
     fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
     text: "#111827",
     muted: "#374151",
     panelFill: "#ffffff",
-    panelStroke: "#c8cdd6",
+    panelStroke: "#b8c4d4",
     separator: "#3f3f46",
     nodeFill: "#ffffff",
-    nodeStroke: "#8b5cf6",
-    dataStroke: "#0284c7",
+    nodeStroke: "#62799a",
+    nodeBorder: "#b9c4d3",
+    dataStroke: "#0f9f82",
     riskStroke: "#dc2626",
-    edge: "#111827",
+    edge: "#94a9c0",
     labelStroke: "#d4d4d8",
     ...(blueprint.style ?? {})
   };
   const width = canvas.width ?? 2400;
   const height = canvas.height ?? 1600;
   const nodesById = new Map((blueprint.nodes ?? []).map((node) => [node.id, node]));
+  const layersById = new Map((blueprint.layers ?? []).map((layer) => [layer.id, layer]));
   const separators = (blueprint.separators ?? []).map((separator) => renderSeparator(separator, style, width)).join("\n");
   const layers = (blueprint.layers ?? []).map((layer) => renderLayer(layer, style)).join("\n");
-  const edges = (blueprint.edges ?? []).map((edge) => renderEdge(edge, nodesById, style)).join("\n");
-  const nodes = (blueprint.nodes ?? []).map((node) => renderNode(node, style)).join("\n");
-  const title = textLine(blueprint.title, width / 2, 96, { size: 54, weight: 850, fill: style.text });
+  const edges = (blueprint.edges ?? []).map((edge, index) => renderEdge(edge, nodesById, style, index)).join("\n");
+  const nodes = (blueprint.nodes ?? []).map((node) => renderNode(node, style, layersById.get(node.layer))).join("\n");
+  const title = textLine(blueprint.title, width / 2, 86, { size: 48, weight: 850, fill: style.text });
   const subtitle = blueprint.subtitle
-    ? textLine(blueprint.subtitle, width / 2, 146, { size: 28, weight: 500, fill: style.text })
+    ? textLine(blueprint.subtitle, width / 2, 132, { size: 25, weight: 500, fill: style.muted })
     : "";
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(blueprint.title)}">
   <defs>
-    <marker id="arrow" markerWidth="20" markerHeight="16" refX="18" refY="8" orient="auto" markerUnits="userSpaceOnUse">
-      <path d="M 0 0 L 20 8 L 0 16 z" fill="${esc(style.edge)}"/>
+    <filter id="node-shadow" x="-20%" y="-30%" width="140%" height="170%">
+      <feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="#182538" flood-opacity="0.12"/>
+    </filter>
+    <marker id="arrow" markerWidth="14" markerHeight="12" refX="12" refY="6" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 0 0 L 14 6 L 0 12 z" fill="${esc(style.edge)}"/>
     </marker>
-    <marker id="arrow-risk" markerWidth="20" markerHeight="16" refX="18" refY="8" orient="auto" markerUnits="userSpaceOnUse">
-      <path d="M 0 0 L 20 8 L 0 16 z" fill="${esc(style.riskStroke)}"/>
+    <marker id="arrow-risk" markerWidth="14" markerHeight="12" refX="12" refY="6" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 0 0 L 14 6 L 0 12 z" fill="${esc(style.riskStroke)}"/>
     </marker>
     <style>
       text { font-family: ${cssText(style.fontFamily)}; dominant-baseline: middle; }
+      .mindmap-node, .mindmap-edge { cursor: pointer; }
+      .edge-path { opacity: .9; }
     </style>
   </defs>
 	  <rect x="0" y="0" width="${width}" height="${height}" fill="${esc(canvas.background ?? "#ffffff")}"/>

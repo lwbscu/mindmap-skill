@@ -4,53 +4,186 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#ffffff">
+  <meta name="color-scheme" content="light">
   <title>MindMap</title>
   <link rel="icon" href="./assets/mindmap.png" type="image/png">
   <link rel="apple-touch-icon" href="./assets/mindmap.png">
   <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-  <header class="topbar">
-    <div>
-      <h1>MindMap</h1>
-      <p id="diagram-subtitle">交互式结构框图</p>
-    </div>
-    <div class="actions">
-      <label class="file-action">
-        打开 JSON
-        <input id="open-file" type="file" accept="application/json,.json">
+  <div id="app-shell" class="app-shell" data-tool="select" data-view="architecture">
+    <header class="topbar">
+      <div class="topbar-cluster app-cluster">
+        <button id="toggle-left" class="icon-button" type="button" title="显示或隐藏导航侧栏" aria-label="显示或隐藏导航侧栏"><i data-lucide="panel-left"></i></button>
+        <img class="app-mark" src="./assets/mindmap.png" alt="" width="32" height="32">
+        <div class="brand-copy">
+          <strong>MindMap</strong>
+          <span id="save-status">本地编辑</span>
+        </div>
+      </div>
+
+      <nav class="view-switcher" aria-label="视图模式">
+        <button type="button" data-view-mode="mindmap">MindMap</button>
+        <button type="button" data-view-mode="dependency">依赖图</button>
+        <button class="is-active" type="button" data-view-mode="architecture">架构图</button>
+      </nav>
+
+      <div class="topbar-cluster tool-cluster" aria-label="画布工具">
+        <button class="icon-button is-active" type="button" data-tool="select" title="选择工具 (V)" aria-label="选择工具"><i data-lucide="mouse-pointer-2"></i></button>
+        <button class="icon-button" type="button" data-tool="pan" title="抓手工具 (H)" aria-label="抓手工具"><i data-lucide="hand"></i></button>
+        <button class="icon-button" type="button" data-tool="connect" title="连线工具 (C)" aria-label="连线工具"><i data-lucide="git-branch"></i></button>
+        <details class="new-menu compact-menu">
+          <summary class="icon-button" title="新建" aria-label="新建"><i data-lucide="plus"></i></summary>
+          <div class="menu-panel">
+            <button id="add-node" type="button"><i data-lucide="square"></i>模块方块 <kbd>B</kbd></button>
+            <button id="add-note" type="button"><i data-lucide="sticky-note"></i>便签 <kbd>N</kbd></button>
+            <button id="add-group" type="button"><i data-lucide="group"></i>分组框</button>
+            <button id="add-external" type="button"><i data-lucide="cloud"></i>外部系统</button>
+          </div>
+        </details>
+        <button id="auto-layout" class="icon-button" type="button" title="自动布局 (L)" aria-label="自动布局"><i data-lucide="wand-sparkles"></i></button>
+      </div>
+
+      <div class="topbar-spacer"></div>
+
+      <div class="topbar-cluster history-cluster" aria-label="编辑历史">
+        <button id="undo" class="icon-button" type="button" title="撤销 (Ctrl/Cmd+Z)" aria-label="撤销"><i data-lucide="undo-2"></i></button>
+        <button id="redo" class="icon-button" type="button" title="重做 (Ctrl/Cmd+Shift+Z)" aria-label="重做"><i data-lucide="redo-2"></i></button>
+      </div>
+
+      <label class="top-search">
+        <i data-lucide="search" aria-hidden="true"></i>
+        <input id="search" type="search" placeholder="搜索节点、关系、证据" aria-label="搜索节点、关系和证据">
+        <kbd>⌘F</kbd>
       </label>
-      <button id="fit">适配</button>
-      <button id="zoom-out">缩小</button>
-      <button id="zoom-in">放大</button>
-      <a id="download-svg" download="mindmap.svg">下载 SVG</a>
-      <a id="download-html" download="mindmap.html">下载 HTML</a>
-    </div>
-  </header>
-  <main>
-    <aside>
-      <h2 id="diagram-title">结构框图</h2>
-      <dl class="stats">
-        <div>
-          <dt>层级</dt>
-          <dd id="layer-count">0</dd>
+
+      <button id="open-file-button" class="icon-button" type="button" title="打开 diagram JSON" aria-label="打开"><i data-lucide="folder-open"></i></button>
+      <input id="open-file" type="file" accept="application/json,.json" hidden>
+      <details class="export-menu compact-menu">
+        <summary class="icon-button" title="导出" aria-label="导出"><i data-lucide="download"></i></summary>
+        <div class="menu-panel menu-panel-right">
+          <button type="button" data-export="svg"><i data-lucide="file-image"></i>SVG</button>
+          <button type="button" data-export="png"><i data-lucide="image"></i>PNG</button>
+          <button type="button" data-export="pdf"><i data-lucide="file-text"></i>PDF</button>
+          <button type="button" data-export="json"><i data-lucide="braces"></i>Diagram JSON</button>
+          <button type="button" data-export="html"><i data-lucide="file-code-2"></i>独立 HTML</button>
+          <button type="button" data-export="mermaid"><i data-lucide="workflow"></i>Mermaid</button>
+          <hr>
+          <button id="copy-summary" type="button"><i data-lucide="clipboard-copy"></i>复制摘要</button>
         </div>
-        <div>
-          <dt>节点</dt>
-          <dd id="node-count">0</dd>
-        </div>
-        <div>
-          <dt>关系</dt>
-          <dd id="edge-count">0</dd>
-        </div>
-      </dl>
-      <p id="diagram-note"></p>
+      </details>
+      <button id="toggle-right" class="icon-button" type="button" title="显示或隐藏检查器" aria-label="显示或隐藏检查器"><i data-lucide="panel-right"></i></button>
+    </header>
+
+    <aside class="sidebar" aria-label="图表导航">
+      <div class="panel-tabs" role="tablist" aria-label="导航视图">
+        <button class="is-active" type="button" data-sidebar-tab="outline" role="tab">大纲</button>
+        <button type="button" data-sidebar-tab="layers" role="tab">图层</button>
+        <button type="button" data-sidebar-tab="views" role="tab">视图</button>
+      </div>
+      <section class="sidebar-panel" data-sidebar-panel="outline">
+        <div class="panel-heading"><span>结构索引</span><b id="sidebar-node-count">0</b></div>
+        <div id="node-list" class="node-list" role="tree"></div>
+      </section>
+      <section class="sidebar-panel" data-sidebar-panel="layers" hidden>
+        <div class="panel-heading"><span>图层可见性</span><button id="show-all-layers" type="button">全部显示</button></div>
+        <div id="layer-list" class="layer-list"></div>
+      </section>
+      <section class="sidebar-panel" data-sidebar-panel="views" hidden>
+        <div class="panel-heading"><span>已保存视图</span><button id="save-view" type="button">保存</button></div>
+        <div id="saved-view-list" class="saved-view-list"></div>
+      </section>
+      <div id="left-resizer" class="panel-resizer" role="separator" aria-label="调整导航侧栏宽度"></div>
     </aside>
-    <section class="stage-wrap">
-      <div id="stage" class="stage"></div>
-    </section>
-  </main>
+
+    <main class="workspace">
+      <section id="graph-shell" class="graph-shell" aria-label="MindMap 无限画布">
+        <div id="error-banner" class="error-banner" role="alert" hidden>
+          <div><strong>无法载入图表</strong><span id="error-message"></span></div>
+          <button id="dismiss-error" class="icon-button" type="button" aria-label="关闭错误"><i data-lucide="x"></i></button>
+        </div>
+
+        <div class="canvas-titlebar">
+          <div>
+            <strong id="diagram-title">结构框图</strong>
+            <span id="diagram-subtitle">交互式结构框图</span>
+          </div>
+          <div class="canvas-metrics">
+            <span><b id="visible-node-count">0</b> / <b id="node-count">0</b> 节点</span>
+            <span><b id="edge-count">0</b> 关系</span>
+          </div>
+        </div>
+
+        <div id="search-results" class="search-results" hidden></div>
+        <div id="graph-canvas" class="graph-canvas" tabindex="0"></div>
+        <div id="marquee" class="marquee" hidden></div>
+        <svg id="lasso-overlay" class="lasso-overlay" aria-hidden="true"></svg>
+
+        <div id="selection-toolbar" class="selection-toolbar" hidden>
+          <span id="selection-count">0 个已选</span>
+          <button type="button" data-batch-action="align-left" title="左对齐"><i data-lucide="align-left"></i></button>
+          <button type="button" data-batch-action="align-top" title="顶对齐"><i data-lucide="align-start-horizontal"></i></button>
+          <button type="button" data-batch-action="distribute" title="水平分布"><i data-lucide="align-horizontal-distribute-center"></i></button>
+          <button type="button" data-batch-action="group" title="分组 (G)"><i data-lucide="group"></i></button>
+          <button type="button" data-batch-action="hide" title="从当前视图隐藏"><i data-lucide="eye-off"></i></button>
+          <button type="button" data-batch-action="delete" title="删除"><i data-lucide="trash-2"></i></button>
+        </div>
+
+        <div class="canvas-controls" aria-label="缩放控制">
+          <button id="zoom-out" class="icon-button" type="button" title="缩小" aria-label="缩小"><i data-lucide="minus"></i></button>
+          <label class="zoom-control"><input id="zoom-percent" type="number" min="10" max="400" step="5" value="100" aria-label="缩放百分比"><span>%</span></label>
+          <button id="zoom-in" class="icon-button" type="button" title="放大" aria-label="放大"><i data-lucide="plus"></i></button>
+          <button id="fit" class="icon-button" type="button" title="适应全部 (0)" aria-label="适应全部"><i data-lucide="scan"></i></button>
+          <button id="fit-selection" class="icon-button" type="button" title="适应选中 (Shift+0)" aria-label="适应选中"><i data-lucide="focus"></i></button>
+          <button id="actual-size" class="icon-button" type="button" title="回到 100% (1)" aria-label="回到100%"><i data-lucide="circle-dot"></i></button>
+        </div>
+
+        <div class="minimap-shell">
+          <div class="minimap-header"><span>导航</span><button id="toggle-minimap" type="button" title="收起小地图" aria-label="收起小地图"><i data-lucide="chevron-down"></i></button></div>
+          <div id="minimap" class="minimap"></div>
+        </div>
+
+        <div id="canvas-empty" class="canvas-empty" hidden>
+          <i data-lucide="network"></i><strong>当前视图没有可见节点</strong><button id="empty-add" type="button">新建模块</button>
+        </div>
+      </section>
+    </main>
+
+    <aside class="inspector" aria-label="属性检查器">
+      <div id="right-resizer" class="panel-resizer panel-resizer-left" role="separator" aria-label="调整检查器宽度"></div>
+      <div class="inspector-header">
+        <span id="inspector-kicker">当前视图</span>
+        <strong id="inspector-title">架构图</strong>
+        <p id="inspector-subtitle">选择节点、关系或图层以查看和编辑属性</p>
+      </div>
+      <div class="panel-tabs inspector-tabs" role="tablist" aria-label="检查器视图">
+        <button class="is-active" type="button" data-inspector-tab="details" role="tab">详情</button>
+        <button type="button" data-inspector-tab="relations" role="tab">关系</button>
+        <button type="button" data-inspector-tab="evidence" role="tab">证据</button>
+        <button type="button" data-inspector-tab="style" role="tab">样式</button>
+        <button type="button" data-inspector-tab="history" role="tab">历史</button>
+      </div>
+      <div id="inspector-content" class="inspector-content"></div>
+    </aside>
+
+    <footer class="statusbar">
+      <span id="tool-status"><i data-lucide="mouse-pointer-2"></i>选择工具</span>
+      <span id="selection-hint">空白拖动框选，Space 拖动画布</span>
+      <span class="status-spacer"></span>
+      <span id="background-status"></span>
+      <button id="toggle-grid" type="button" title="切换网格吸附"><i data-lucide="grid-3x3"></i><span>8px</span></button>
+      <span id="validation-status" class="status-ok"><i data-lucide="circle-check"></i>结构有效</span>
+    </footer>
+  </div>
+
+  <dialog id="command-palette" class="command-palette">
+    <label><i data-lucide="search"></i><input id="command-search" placeholder="输入命令…" autocomplete="off"></label>
+    <div id="command-list" class="command-list"></div>
+  </dialog>
+
+  <div id="context-menu" class="context-menu" hidden></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
   <script type="module" src="./app.js"></script>
 </body>
 </html>

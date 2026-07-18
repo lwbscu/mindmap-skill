@@ -2,6 +2,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertValidDiagram } from "../app/diagram-validator.mjs";
 import { renderStandaloneHtml, renderSvg } from "../app/render-svg.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -22,10 +23,7 @@ function slugFromTitle(title) {
     .replace(/^-|-$/g, "") || "mindmap";
 }
 
-const diagram = JSON.parse(await fs.readFile(input, "utf8"));
-if (diagram.schemaVersion !== "mindmap-app/v1") {
-  throw new Error("diagram schemaVersion must be mindmap-app/v1");
-}
+const diagram = assertValidDiagram(JSON.parse(await fs.readFile(input, "utf8")));
 const svg = renderSvg(diagram);
 const html = renderStandaloneHtml(diagram, svg);
 const slug = slugFromTitle(diagram.title);

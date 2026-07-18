@@ -1,0 +1,56 @@
+#!/usr/bin/env node
+import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const root = path.resolve(__dirname, "..");
+const electron = createRequire(import.meta.url)("electron");
+const mainPath = path.join(root, "desktop", "main.mjs");
+const sizes = [[1440, 900], [1024, 768], [760, 720], [390, 760]];
+
+function capture(width, height) {
+  return new Promise((resolve, reject) => {
+    const screenshotPath = path.join(process.env.TMPDIR || "/tmp", `mindmap-${width}x${height}.png`);
+    const env = {
+      ...process.env,
+      MINDMAP_ELECTRON_VISUAL: "1",
+      MINDMAP_WINDOW_WIDTH: String(width),
+      MINDMAP_WINDOW_HEIGHT: String(height),
+      MINDMAP_SCREENSHOT_PATH: screenshotPath,
+    };
+    delete env.ELECTRON_RUN_AS_NODE;
+    const child = spawn(electron, [mainPath], { cwd: root, env, stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    child.on("close", (code) => {
+      const match = stdout.match(/MINDMAP_VISUAL_RESULT (.+)/);
+      if (code !== 0 || !match) return reject(new Error(`visual smoke ${width}x${height} failed\n${stdout}\n${stderr}`));
+      resolve(JSON.parse(match[1]));
+    });
+  });
+}
+
+const results = [];
+for (const [width, height] of sizes) {
+  const result = await capture(width, height);
+  assert.equal(result.ok, true);
+  assert.equal(result.nodes, 15);
+  assert.equal(result.edges, 18);
+  assert.equal(result.topbarOverflow, false, `${width}x${height} topbar overflowed`);
+  assert.equal(result.statusbarOverflow, false, `${width}x${height} statusbar overflowed`);
+  assert.ok(result.layerBounds, `${width}x${height} did not render layer bounds`);
+  assert.ok(result.layerBounds.left >= result.graphRect.left - 2, `${width}x${height} content escaped left`);
+  assert.ok(result.layerBounds.right <= result.graphRect.right + 2, `${width}x${height} content escaped right`);
+  assert.ok(result.layerBounds.top >= result.graphRect.top - 2, `${width}x${height} content escaped top`);
+  assert.ok(result.layerBounds.bottom <= result.graphRect.bottom + 2, `${width}x${height} content escaped bottom`);
+  await fs.access(result.screenshotPath);
+  results.push({ requested: `${width}x${height}`, ...result });
+}
+
+console.log(JSON.stringify({ ok: true, results }, null, 2));

@@ -1,13 +1,13 @@
 ---
 name: mindmap-skill
-description: Build evidence-based interactive architecture maps for models, systems, repositories, services, dependencies, and code paths using the MindMap web app.
+description: Build evidence-based interactive architecture maps for models, systems, repositories, services, dependencies, and code paths using the MindMap desktop app.
 ---
 
 # MindMap
 
 ## Purpose
 
-Create or safely update high-quality interactive architecture maps from evidence. The output is a compact `mindmap-app/v1` diagram JSON rendered by the MindMap web app, with clear layers, readable nodes, explicit relations, and uncertain facts marked as `Unknown` or `待确认`.
+Create or safely update high-quality interactive architecture maps from evidence. The output is a compact `mindmap-app/v1` diagram JSON rendered by the MindMap desktop app, with clear layers, readable nodes, explicit relations, clickable evidence details, and uncertain facts marked as `Unknown` or `待确认`.
 
 Use this skill for architecture diagrams of models, systems, repositories, services, components, data flows, dependency structures, or code paths. Do not switch to other diagram workflows unless the user explicitly asks.
 
@@ -17,8 +17,9 @@ Use this skill for architecture diagrams of models, systems, repositories, servi
 - Preserve evidence: every important node and edge should trace to a file, doc, quote, command output, or user statement when available.
 - Do not invent facts. Mark missing ownership, runtime behavior, protocols, data contracts, or model internals as `Unknown` / `待确认`.
 - Prefer stable architecture roles over decorative categories: `entrypoint`, `interface`, `module`, `service`, `model`, `data`, `storage`, `process`, `external`, `risk`, `unknown`.
+- Use status tags when they help review state: `implemented`, `external`, `planned`, `unknown`, `risk`. Put visible labels such as `拟介入` or `待确认` in node text when the exported map needs to show them.
 - Keep the diagram easy to scan: 5-15 primary nodes first, short labels, large text, and explicit arrows that do not cover text.
-- Use the MindMap app artifact by default: diagram JSON plus browser preview, SVG export, and standalone HTML export.
+- Use the MindMap app artifact by default: diagram JSON plus Electron desktop preview, three shared-data views, marquee/lasso multi-select, relation creation, searchable nodes/edges, node/layer navigation, property/evidence inspection, auto-layout, and SVG/PNG/PDF/JSON/HTML/Mermaid export.
 - Never require a local notes directory for normal MindMap work.
 
 ## Required References
@@ -26,7 +27,7 @@ Use this skill for architecture diagrams of models, systems, repositories, servi
 Load only the references needed for the current task:
 
 - [architecture-method.md](references/architecture-method.md): evidence collection, architecture slicing, node/edge naming, uncertainty handling.
-- [diagram-schema.md](references/diagram-schema.md): `mindmap-app/v1` schema and render contract.
+- [diagram-schema.md](references/diagram-schema.md): `mindmap-app/v1` schema, evidence/status fields, validator rules, and render contract.
 - [quality-ratchet.md](references/quality-ratchet.md): quality gate, preview checks, and anti-patterns.
 
 ## Workflow
@@ -54,6 +55,7 @@ Read [architecture-method.md](references/architecture-method.md). Build a coarse
 - separate control flow, data flow, dependency, ownership, and uncertainty
 - keep names short enough to scan in the app
 - attach evidence to each confident claim
+- put long evidence, risks, and links in metadata so the app can export them without crowding the map
 
 Do not start from file-by-file noise. Promote details only when they explain how the architecture works.
 
@@ -73,19 +75,25 @@ Read [diagram-schema.md](references/diagram-schema.md). Write a `mindmap-app/v1`
 }
 ```
 
-Use explicit node coordinates and edge waypoints when needed to keep arrows from crossing labels. Keep labels short; put details in subtitles only when they stay readable.
+Use explicit node coordinates and edge waypoints when needed to keep arrows from crossing labels. Keep labels short; put details in `summary`, `evidence`, `risks`, and `links` as metadata, while visible content is edited directly on canvas nodes.
+
+For evidence-backed diagrams, add compact metadata that the runtime validator can check:
+
+- `node.status`: `implemented`, `external`, `planned`, `unknown`, or `risk`
+- `node.evidence` / `edge.evidence`: array of source strings
+- `edge.relation`: known relation such as `calls`, `routes`, `guards`, `evaluates`, or `writes`
 
 ### 4. Preview And Export
 
 Use the app scripts from the repository root:
 
 ```bash
-npm run app:serve
+npm run app:open
 npm run app:render -- examples/<name>.diagram.json
 npm run app:build
 ```
 
-Open the local `/app/` URL for interactive review. Use SVG or standalone HTML export when a portable artifact is needed.
+Open the Electron desktop window for interactive review. It uses the `mindmap://` local protocol rather than a `127.0.0.1` server. Use **打开**, the MindMap/dependency/architecture switcher, top search, node/layer navigator, minimap, detail/relation/evidence inspector, marquee or lasso multi-select, group dragging, port relation tool, pointer-centered zoom, keyboard copy/paste/undo, and ELK auto-layout to inspect or adjust the diagram. Export the current view as SVG, PNG, PDF, JSON, standalone HTML, or Mermaid when a portable artifact is needed.
 
 ### 5. Validate
 
@@ -94,8 +102,12 @@ Run the project checks after every finished map or app change:
 ```bash
 npm run check
 npm test
+npm run app:smoke
+npm run app:visual
 npm run app:build
 ```
+
+Run `npm run app:render -- examples/<name>.diagram.json` for the target diagram when you need an export-specific validator/render check.
 
 If validation fails, fix the diagram or report the exact blocker.
 
