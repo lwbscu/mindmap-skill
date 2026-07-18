@@ -1,18 +1,30 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="MindMap orbit board icon candidate">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="MindMap route console icon candidate">
+  <title>MindMap route console icon candidate</title>
   <defs>
-    <radialGradient id="bg" cx="50%" cy="38%" r="70%">
-      <stop offset="0" stop-color="#334155"/>
-      <stop offset="1" stop-color="#020617"/>
-    </radialGradient>
+    <linearGradient id="tile" x1="46" y1="30" x2="456" y2="486" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#111b2c"/>
+      <stop offset="1" stop-color="#050b16"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="158" y1="136" x2="366" y2="354" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f8d675"/>
+      <stop offset="1" stop-color="#a86719"/>
+    </linearGradient>
+    <filter id="lift" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#020617" flood-opacity=".5"/>
+    </filter>
   </defs>
-  <rect width="512" height="512" rx="116" fill="url(#bg)"/>
-  <circle cx="256" cy="256" r="148" fill="none" stroke="#475569" stroke-width="10"/>
-  <circle cx="256" cy="256" r="94" fill="#ffffff" stroke="#e2e8f0" stroke-width="10"/>
-  <path d="M184 256h144M256 184v144" stroke="#111827" stroke-width="14" stroke-linecap="round"/>
-  <rect x="176" y="152" width="160" height="50" rx="16" fill="#dbeafe" stroke="#60a5fa" stroke-width="8"/>
-  <rect x="108" y="300" width="150" height="50" rx="16" fill="#fed7aa" stroke="#fb923c" stroke-width="8"/>
-  <rect x="254" y="300" width="150" height="50" rx="16" fill="#bbf7d0" stroke="#22c55e" stroke-width="8"/>
-  <circle cx="256" cy="256" r="26" fill="#ef4444"/>
-  <path d="M256 202v30M216 284l-28 20M296 284l28 20" stroke="#ef4444" stroke-width="10" stroke-linecap="round"/>
-  <path d="M166 176h180M138 325h90M284 325h90" stroke="#111827" stroke-width="9" stroke-linecap="round" opacity="0.75"/>
+  <rect x="8" y="8" width="496" height="496" rx="58" fill="url(#tile)" stroke="#36516f" stroke-width="4"/>
+  <g filter="url(#lift)">
+    <rect x="118" y="58" width="276" height="292" rx="8" fill="#f8fafc"/>
+    <rect x="118" y="58" width="276" height="292" rx="8" fill="none" stroke="#111827" stroke-width="8"/>
+    <path d="M170 266c0-58 38-106 86-106s86 48 86 106" fill="none" stroke="#111827" stroke-width="13" stroke-linecap="round"/>
+    <path d="M206 266c0-37 22-68 50-68s50 31 50 68" fill="none" stroke="#111827" stroke-width="13" stroke-linecap="round"/>
+    <path d="M154 300h204v38H154z" fill="#27272a" stroke="#111827" stroke-linejoin="round" stroke-width="9"/>
+    <path d="M184 300l28-66h88l28 66z" fill="url(#gold)" stroke="#111827" stroke-linejoin="round" stroke-width="9"/>
+    <path d="M212 300l16-38h56l16 38z" fill="#f8fafc" stroke="#111827" stroke-linejoin="round" stroke-width="7"/>
+    <path d="M176 320h160" stroke="#f59e0b" stroke-width="10" stroke-linecap="round"/>
+    <circle cx="256" cy="168" r="18" fill="url(#gold)" stroke="#111827" stroke-width="7"/>
+    <circle cx="256" cy="236" r="18" fill="#f97316" stroke="#111827" stroke-width="7"/>
+    <path d="M256 186v32" stroke="#111827" stroke-width="9" stroke-linecap="round"/>
+  </g>
 </svg>

@@ -1,22 +1,32 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="MindMap node constellation icon candidate">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="MindMap crimson route icon candidate">
+  <title>MindMap crimson route icon candidate</title>
   <defs>
-    <linearGradient id="bg" x1="52" y1="56" x2="462" y2="460" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#eff6ff"/>
-      <stop offset="1" stop-color="#f8fafc"/>
+    <linearGradient id="tile" x1="54" y1="26" x2="450" y2="490" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#101b2c"/>
+      <stop offset="1" stop-color="#050b16"/>
+    </linearGradient>
+    <linearGradient id="red" x1="98" y1="118" x2="390" y2="336" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ff6b3d"/>
+      <stop offset=".42" stop-color="#dc2626"/>
+      <stop offset="1" stop-color="#7f1d1d"/>
+    </linearGradient>
+    <linearGradient id="steel" x1="92" y1="150" x2="304" y2="270" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f8fafc"/>
+      <stop offset="1" stop-color="#64748b"/>
     </linearGradient>
     <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#0f172a" flood-opacity="0.18"/>
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#020617" flood-opacity=".55"/>
     </filter>
   </defs>
-  <rect width="512" height="512" rx="112" fill="#111827"/>
-  <rect x="62" y="62" width="388" height="388" rx="92" fill="url(#bg)" filter="url(#shadow)"/>
-  <path d="M166 164h180M166 164v92m180-92v92M166 256h180M166 256v92m180-92v92M166 348h180" fill="none" stroke="#64748b" stroke-width="12" stroke-linecap="round"/>
-  <circle cx="166" cy="164" r="36" fill="#dbeafe" stroke="#2563eb" stroke-width="9"/>
-  <circle cx="346" cy="164" r="36" fill="#e9d5ff" stroke="#9333ea" stroke-width="9"/>
-  <circle cx="166" cy="256" r="36" fill="#fed7aa" stroke="#f97316" stroke-width="9"/>
-  <circle cx="346" cy="256" r="36" fill="#bbf7d0" stroke="#16a34a" stroke-width="9"/>
-  <circle cx="166" cy="348" r="36" fill="#bae6fd" stroke="#0284c7" stroke-width="9"/>
-  <circle cx="346" cy="348" r="36" fill="#fee2e2" stroke="#ef4444" stroke-width="9"/>
-  <circle cx="256" cy="256" r="46" fill="#ffffff" stroke="#111827" stroke-width="10"/>
-  <path d="M232 256h48M256 232v48" stroke="#111827" stroke-width="12" stroke-linecap="round"/>
+  <rect x="8" y="8" width="496" height="496" rx="58" fill="url(#tile)" stroke="#36516f" stroke-width="4"/>
+  <g filter="url(#shadow)">
+    <path d="M122 310l56-174 72 96 77-96 63 174h-58l-25-78-62 80-60-80-26 78z" fill="url(#red)" stroke="#111827" stroke-linejoin="round" stroke-width="12"/>
+    <path d="M100 194l94 26 30 42-120-34z" fill="url(#steel)" opacity=".92" stroke="#111827" stroke-linejoin="round" stroke-width="8"/>
+    <path d="M112 248l96 24 22 36-110-28z" fill="#94a3b8" opacity=".86" stroke="#111827" stroke-linejoin="round" stroke-width="8"/>
+    <path d="M152 342h198" stroke="#f59e0b" stroke-width="16" stroke-linecap="round"/>
+    <path d="M190 374h126" stroke="#ef4444" stroke-width="13" stroke-linecap="round"/>
+    <circle cx="178" cy="136" r="15" fill="#f59e0b" stroke="#111827" stroke-width="6"/>
+    <circle cx="327" cy="136" r="15" fill="#f59e0b" stroke="#111827" stroke-width="6"/>
+    <circle cx="246" cy="312" r="17" fill="#f8fafc" stroke="#111827" stroke-width="8"/>
+  </g>
 </svg>
