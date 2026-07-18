@@ -1,36 +1,26 @@
 # MindMap
 
-MindMap is an agent skill for creating and safely updating evidence-based software, system, and model architecture diagrams in [Obsidian Canvas](https://obsidian.md/canvas).
+MindMap is an interactive web app and agent skill for making evidence-based architecture maps. Agents produce a compact diagram JSON file, and the app renders it as a clean, zoomable structure diagram with SVG and standalone HTML exports.
 
-MindMap 是一个面向 Claude Code 与 Codex 的架构制图 Skill。它把用户描述、文档和代码中的可验证事实整理为可交互的 Obsidian `.canvas` 文件，并在增量更新时保留人工布局与样式。
+MindMap 是一个面向 Claude Code 与 Codex 的交互式结构框图工具。它把用户描述、代码、文档和日志里的可验证事实整理为 `mindmap-app/v1` diagram JSON，并用 Web 小程序渲染成白底大字、分层清晰、箭头不遮挡的结构框图。
 
 ## Features
 
-- Generate deterministic JSON Canvas 1.0 files from a stable architecture blueprint.
-- Build left-to-right data flows, subsystem groups, external boundaries, and dashed feedback loops.
-- Merge into an existing Canvas without deleting manual nodes or overwriting human positions and styles.
-- Mark unsupported assumptions as `Unknown / 待确认` instead of inventing architecture facts.
-- Validate IDs, edge references, geometry, overlaps, colors, isolated nodes, and Advanced Canvas fields.
-- Optionally install and configure Advanced Canvas 6.5.0 with reusable MindMap node templates.
-
-## Scope
-
-Version 1 focuses on architecture diagrams in Obsidian Canvas.
-
-It does not generate Mermaid, draw.io, HTML courseware, SVG/PNG exports, or traditional radial mind maps. Functional roles such as `data`, `model`, `loss`, and `external` describe architecture responsibilities, not a fixed model taxonomy.
+- Render architecture diagrams from stable `mindmap-app/v1` JSON.
+- Use large readable text, pastel layer bands, explicit arrow routes, and label backgrounds.
+- Preview diagrams in a browser with zoom, scroll, JSON loading, SVG download, and standalone HTML download.
+- Publish the static app to GitHub Pages without runtime dependencies.
+- Keep architecture claims evidence-backed and mark unsupported facts as `Unknown / 待确认`.
 
 ## Requirements
 
 - Node.js 20 or newer
-- Obsidian when interactive Canvas editing is required
-- Claude Code or Codex for skill-driven use
-- Network access only when Advanced Canvas must be installed
+- A modern browser for interactive preview
+- Claude Code or Codex for skill-driven diagram generation
 
-The core builder and validator use Node.js built-in modules and have no npm runtime dependencies.
+The app and scripts use Node.js built-in modules only. There are no npm runtime dependencies.
 
 ## Installation
-
-Clone the repository and link the same working tree into the agent skill directories:
 
 ```bash
 git clone https://github.com/lwbscu/mindmap-skill.git ~/Projects/MindMap
@@ -42,67 +32,58 @@ Restart the Claude Code or Codex session after installing the skill.
 
 ## Agent Usage
 
-Invoke the skill explicitly when needed:
+Invoke the skill when you want an architecture or system structure map:
 
 ```text
-Use $mindmap-skill to inspect this repository and create an Obsidian Canvas architecture diagram.
+Use $mindmap-skill to inspect this repository and create an evidence-backed interactive architecture map.
 ```
 
-The skill supports four workflows:
+The skill produces or updates a diagram JSON file, then uses the MindMap app for local preview and export.
 
-1. Create a new architecture Canvas.
-2. Merge evidence-backed components into an existing Canvas.
-3. Review an existing Canvas for structural or evidence problems.
-4. Repair a Canvas while preserving human-authored content.
+## App Usage
 
-See [`SKILL.md`](SKILL.md) for the orchestration rules and [`references/`](references/) for the architecture, Canvas, and quality contracts.
-
-## Script Usage
-
-Build or merge a Canvas:
+Start the local app:
 
 ```bash
-node scripts/build-canvas.mjs \
-  --input architecture.blueprint.json \
-  --output architecture.canvas \
-  --mode create \
-  --advanced auto
+npm run app:serve
 ```
 
-Validate the result:
+Open the printed `/app/` URL in a browser. The default example is [`examples/rpent-libero-behavior.diagram.json`](examples/rpent-libero-behavior.diagram.json). Use **打开 JSON** in the app to load another diagram file.
+
+Build the GitHub Pages artifact:
 
 ```bash
-node scripts/validate-canvas.mjs architecture.canvas --strict
+npm run app:build
 ```
 
-Check or install Advanced Canvas in a selected vault:
+Render the default example to standalone SVG and HTML:
 
 ```bash
-node scripts/ensure-advanced-canvas.mjs --vault "/path/to/Obsidian Vault" --check
-node scripts/ensure-advanced-canvas.mjs --vault "/path/to/Obsidian Vault" --version 6.5.0
+npm run app:render
 ```
 
-The blueprint interface is documented in [`references/obsidian-canvas-contract.md`](references/obsidian-canvas-contract.md).
+## Diagram Format
 
-## Safety
+MindMap diagrams use `schemaVersion: "mindmap-app/v1"` with these top-level fields:
 
-- Architecture facts must come from user input, documentation, or code evidence.
-- Merge mode uses deterministic IDs and rejects conflicting semantic keys.
-- Existing manual nodes, text, coordinates, colors, unknown fields, and Advanced Canvas styles are preserved.
-- Existing Canvas files are validated before replacement and backed up under the user cache directory.
-- Advanced Canvas downloads are restricted to official GitHub asset hosts and pinned by version, size, and SHA-256.
-- A failed plugin download does not prevent standard JSON Canvas generation.
+- `title`, `subtitle`, `canvas`, `style`
+- `layers`
+- `nodes`
+- `edges`
 
-Advanced Canvas is a separate third-party project and is not bundled with MindMap. Its repository is available at [Developer-Mike/obsidian-advanced-canvas](https://github.com/Developer-Mike/obsidian-advanced-canvas).
+Nodes use absolute layout fields such as `id`, `title`, `subtitle`, `x`, `y`, `width`, and `height`. Edges support `from`, `to`, side anchors, explicit `waypoints`, labels, and label positions.
+
+See [`references/diagram-schema.md`](references/diagram-schema.md) for the contract.
 
 ## Development
 
 ```bash
 npm run check
 npm test
+npm run app:build
 ```
 
-The regression suite covers deterministic generation, 40-node layouts, non-destructive merge behavior, malformed Canvas input, Advanced Canvas compatibility, plugin installation recovery, and download policy checks.
+The test suite validates the default example, renders SVG/HTML, checks key architecture labels, and builds the static site.
 
 ## License
 

@@ -1,0 +1,368 @@
+{
+  "schemaVersion": "mindmap-app/v1",
+  "title": "RPent / LIBERO / BEHAVIOR 接入架构",
+  "subtitle": "白底大字审稿版：RuntimeProvider 统一入口；LIBERO 多工具闭环，BEHAVIOR 先走 run_full_task 单工具闭环。",
+  "canvas": {
+    "width": 2400,
+    "height": 1480,
+    "background": "#ffffff"
+  },
+  "style": {
+    "fontFamily": "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, Noto Sans CJK SC, Microsoft YaHei, sans-serif",
+    "text": "#111111",
+    "muted": "#2f343b",
+    "panelFill": "#ffffff",
+    "panelStroke": "#c8cdd6",
+    "nodeFill": "#fffefe",
+    "nodeStroke": "#3f3f46",
+    "dataStroke": "#0284c7",
+    "riskStroke": "#ef4444",
+    "edge": "#2563eb",
+    "labelStroke": "#d4d4d8",
+    "separator": "#3f3f46"
+  },
+  "separators": [
+    { "y": 386 },
+    { "y": 626 },
+    { "y": 926 },
+    { "y": 1286 }
+  ],
+  "layers": [
+    {
+      "id": "client",
+      "label": "接入端",
+      "x": 300,
+      "y": 190,
+      "width": 2020,
+      "height": 160,
+      "fill": "#dbeafe",
+      "stroke": "#60a5fa",
+      "tabFill": "#bfdbfe",
+      "labelMode": "tab"
+    },
+    {
+      "id": "gateway",
+      "label": "网关层",
+      "x": 300,
+      "y": 420,
+      "width": 2020,
+      "height": 170,
+      "fill": "#fed7aa",
+      "stroke": "#fb923c",
+      "tabFill": "#fdba74",
+      "labelMode": "tab"
+    },
+    {
+      "id": "agent",
+      "label": "插件层",
+      "x": 300,
+      "y": 660,
+      "width": 2020,
+      "height": 230,
+      "fill": "#e9d5ff",
+      "stroke": "#a855f7",
+      "tabFill": "#ddd6fe",
+      "labelMode": "tab"
+    },
+    {
+      "id": "runtime",
+      "label": "运行层",
+      "x": 300,
+      "y": 965,
+      "width": 2020,
+      "height": 290,
+      "fill": "#bbf7d0",
+      "stroke": "#22c55e",
+      "tabFill": "#86efac",
+      "labelMode": "tab"
+    },
+    {
+      "id": "result",
+      "label": "验收层",
+      "x": 300,
+      "y": 1320,
+      "width": 2020,
+      "height": 130,
+      "fill": "#bae6fd",
+      "stroke": "#38bdf8",
+      "tabFill": "#7dd3fc",
+      "labelMode": "tab"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "cli",
+      "layer": "client",
+      "title": "CLI",
+      "subtitle": "批量评测入口",
+      "x": 640,
+      "y": 232,
+      "width": 420,
+      "height": 78,
+      "titleSize": 36,
+      "subtitleSize": 23
+    },
+    {
+      "id": "dashboard",
+      "layer": "client",
+      "title": "Dashboard",
+      "subtitle": "启动 / 监控",
+      "x": 1540,
+      "y": 232,
+      "width": 470,
+      "height": 78,
+      "titleSize": 36,
+      "subtitleSize": 23
+    },
+    {
+      "id": "runtime-provider",
+      "layer": "gateway",
+      "title": "RuntimeProvider",
+      "subtitle": "get_runtime_provider(env).start(...)",
+      "x": 710,
+      "y": 462,
+      "width": 980,
+      "height": 88,
+      "stroke": "#3f3f46",
+      "titleSize": 39,
+      "subtitleSize": 24
+    },
+    {
+      "id": "cerebrum",
+      "layer": "agent",
+      "title": "Cerebrum",
+      "subtitle": "Claude Code / Codex",
+      "x": 420,
+      "y": 742,
+      "width": 420,
+      "height": 92,
+      "titleSize": 37,
+      "subtitleSize": 23
+    },
+    {
+      "id": "libero-toolkit",
+      "layer": "agent",
+      "title": "LIBERO Toolkit",
+      "subtitle": "多工具 primitives",
+      "x": 980,
+      "y": 742,
+      "width": 430,
+      "height": 92,
+      "titleSize": 36,
+      "subtitleSize": 23
+    },
+    {
+      "id": "behavior-toolkit",
+      "layer": "agent",
+      "title": "BEHAVIOR Toolkit",
+      "subtitle": "单工具 run_full_task",
+      "x": 1590,
+      "y": 742,
+      "width": 540,
+      "height": 92,
+      "stroke": "#ef4444",
+      "titleSize": 36,
+      "subtitleSize": 23
+    },
+    {
+      "id": "libero-runtime",
+      "layer": "runtime",
+      "title": "LIBERO Runtime",
+      "subtitle": "Env RPC + Pi0.5 [5,7]",
+      "x": 430,
+      "y": 1052,
+      "width": 620,
+      "height": 112,
+      "titleSize": 37,
+      "subtitleSize": 24
+    },
+    {
+      "id": "full-task-runner",
+      "layer": "runtime",
+      "title": "FullTaskRunner",
+      "subtitle": "reset -> loop -> stop",
+      "x": 1120,
+      "y": 1038,
+      "width": 500,
+      "height": 126,
+      "stroke": "#ef4444",
+      "titleSize": 37,
+      "subtitleSize": 24
+    },
+    {
+      "id": "behavior-runtime",
+      "layer": "runtime",
+      "title": "BEHAVIOR Runtime",
+      "subtitle": "Env RPC + AgenticVLA [T,23]",
+      "x": 1760,
+      "y": 1052,
+      "width": 520,
+      "height": 112,
+      "stroke": "#ef4444",
+      "titleSize": 35,
+      "subtitleSize": 23
+    },
+    {
+      "id": "artifacts",
+      "layer": "result",
+      "title": "Artifacts / Logs",
+      "subtitle": "states / transcript / video",
+      "x": 620,
+      "y": 1350,
+      "width": 560,
+      "height": 74,
+      "kind": "data",
+      "titleSize": 34,
+      "subtitleSize": 21
+    },
+    {
+      "id": "task-success",
+      "layer": "result",
+      "title": "official task_success",
+      "subtitle": "只认 info.done.success",
+      "x": 1460,
+      "y": 1350,
+      "width": 700,
+      "height": 74,
+      "kind": "risk",
+      "fill": "#fff7f7",
+      "titleSize": 34,
+      "subtitleSize": 21
+    }
+  ],
+  "edges": [
+    {
+      "from": "cli",
+      "to": "runtime-provider",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "waypoints": [{ "x": 850, "y": 380 }],
+      "strokeWidth": 4
+    },
+    {
+      "from": "dashboard",
+      "to": "runtime-provider",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "waypoints": [{ "x": 1775, "y": 380 }],
+      "strokeWidth": 4
+    },
+    {
+      "from": "runtime-provider",
+      "to": "cerebrum",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "waypoints": [
+        { "x": 1200, "y": 620 },
+        { "x": 630, "y": 620 }
+      ],
+      "strokeWidth": 4
+    },
+    {
+      "from": "cerebrum",
+      "to": "libero-toolkit",
+      "fromSide": "top",
+      "toSide": "top",
+      "waypoints": [
+        { "x": 630, "y": 704 },
+        { "x": 1195, "y": 704 }
+      ],
+      "label": "multi primitives",
+      "labelAt": { "x": 910, "y": 694 },
+      "labelSize": 24
+    },
+    {
+      "from": "cerebrum",
+      "to": "behavior-toolkit",
+      "fromSide": "top",
+      "toSide": "top",
+      "waypoints": [
+        { "x": 630, "y": 680 },
+        { "x": 1860, "y": 680 }
+      ],
+      "label": "single run_full_task",
+      "labelAt": { "x": 1550, "y": 668 },
+      "labelSize": 24,
+      "stroke": "#ef4444"
+    },
+    {
+      "from": "libero-toolkit",
+      "to": "libero-runtime",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "waypoints": [
+        { "x": 1195, "y": 930 },
+        { "x": 740, "y": 930 }
+      ],
+      "label": "LIBERO 路径",
+      "labelAt": { "x": 880, "y": 938 },
+      "labelSize": 23
+    },
+    {
+      "from": "behavior-toolkit",
+      "to": "full-task-runner",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "waypoints": [
+        { "x": 1860, "y": 930 },
+        { "x": 1370, "y": 930 }
+      ],
+      "label": "BEHAVIOR 路径",
+      "labelAt": { "x": 1670, "y": 938 },
+      "labelSize": 23,
+      "stroke": "#ef4444"
+    },
+    {
+      "from": "full-task-runner",
+      "to": "behavior-runtime",
+      "fromSide": "right",
+      "toSide": "top",
+      "waypoints": [
+        { "x": 1685, "y": 1004 },
+        { "x": 2020, "y": 1004 }
+      ],
+      "label": "obs -> predict / chunk_step",
+      "labelAt": { "x": 1832, "y": 990 },
+      "labelSize": 23,
+      "stroke": "#ef4444"
+    },
+    {
+      "from": "libero-runtime",
+      "to": "artifacts",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "waypoints": [{ "x": 820, "y": 1288 }],
+      "label": "states / recipe",
+      "labelAt": { "x": 700, "y": 1276 },
+      "labelSize": 22
+    },
+    {
+      "from": "full-task-runner",
+      "to": "artifacts",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "waypoints": [
+        { "x": 1370, "y": 1288 },
+        { "x": 900, "y": 1288 }
+      ],
+      "label": "transcript / video",
+      "labelAt": { "x": 1150, "y": 1276 },
+      "labelSize": 22
+    },
+    {
+      "from": "behavior-runtime",
+      "to": "task-success",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "waypoints": [
+        { "x": 2020, "y": 1288 },
+        { "x": 1810, "y": 1288 }
+      ],
+      "label": "info.done.success only",
+      "labelAt": { "x": 1870, "y": 1276 },
+      "labelSize": 23,
+      "stroke": "#ef4444",
+      "strokeWidth": 5
+    }
+  ]
+}

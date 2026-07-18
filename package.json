@@ -1,7 +1,7 @@
 {
   "name": "mindmap-skill",
   "version": "0.1.0",
-  "description": "Agent skill for evidence-based Obsidian Canvas architecture maps",
+  "description": "Interactive evidence-based architecture map app and agent skill",
   "license": "MIT",
   "type": "module",
   "private": false,
@@ -9,7 +9,11 @@
     "node": ">=20"
   },
   "scripts": {
-    "check": "node --check scripts/build-canvas.mjs && node --check scripts/validate-canvas.mjs && node --check scripts/ensure-advanced-canvas.mjs && node --check scripts/test-mindmap.mjs",
-    "test": "node scripts/test-mindmap.mjs"
+    "check": "node --check app/app.js && node --check app/render-svg.mjs && node --check scripts/build-app.mjs && node --check scripts/render-app.mjs && node --check scripts/serve-app.mjs && node --check scripts/test-app.mjs",
+    "test": "node scripts/test-app.mjs",
+    "app:build": "node scripts/build-app.mjs",
+    "app:render": "node scripts/render-app.mjs",
+    "app:serve": "node scripts/serve-app.mjs",
+    "ci": "npm run check && npm test && npm run app:build"
   }
 }

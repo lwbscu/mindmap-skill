@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MindMap</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>MindMap</h1>
+      <p id="diagram-subtitle">交互式结构框图</p>
+    </div>
+    <div class="actions">
+      <label class="file-action">
+        打开 JSON
+        <input id="open-file" type="file" accept="application/json,.json">
+      </label>
+      <button id="fit">适配</button>
+      <button id="zoom-out">缩小</button>
+      <button id="zoom-in">放大</button>
+      <a id="download-svg" download="mindmap.svg">下载 SVG</a>
+      <a id="download-html" download="mindmap.html">下载 HTML</a>
+    </div>
+  </header>
+  <main>
+    <aside>
+      <h2 id="diagram-title">结构框图</h2>
+      <dl class="stats">
+        <div>
+          <dt>层级</dt>
+          <dd id="layer-count">0</dd>
+        </div>
+        <div>
+          <dt>节点</dt>
+          <dd id="node-count">0</dd>
+        </div>
+        <div>
+          <dt>关系</dt>
+          <dd id="edge-count">0</dd>
+        </div>
+      </dl>
+      <p id="diagram-note"></p>
+    </aside>
+    <section class="stage-wrap">
+      <div id="stage" class="stage"></div>
+    </section>
+  </main>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

@@ -1,7 +1,7 @@
 interface:
   display_name: "MindMap"
-  short_description: "Build reliable Obsidian Canvas architecture maps"
-  default_prompt: "Use $mindmap-skill to create or safely update an evidence-based Obsidian Canvas architecture map."
+  short_description: "Build reliable interactive architecture maps"
+  default_prompt: "Use $mindmap-skill to create or safely update an evidence-backed interactive architecture map."
 
 policy:
   allow_implicit_invocation: true

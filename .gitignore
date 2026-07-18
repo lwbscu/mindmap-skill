@@ -2,6 +2,10 @@
 Thumbs.db
 node_modules/
 coverage/
+dist/
+cache/
+.cache/
+.obsidian/
 *.log
 *.tmp
 *.bak
