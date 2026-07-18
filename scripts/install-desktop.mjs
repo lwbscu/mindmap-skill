@@ -9,7 +9,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
 const applicationsDir = path.join(os.homedir(), ".local", "share", "applications");
 const desktopPath = path.join(applicationsDir, "mindmap.desktop");
-const iconPath = path.join(root, "app", "assets", "mindmap.svg");
+const iconPath = path.join(root, "app", "assets", "mindmap.png");
 const openScript = path.join(root, "scripts", "open-app.mjs");
 
 function q(value) {

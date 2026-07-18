@@ -1,4 +1,4 @@
-const CACHE_NAME = "mindmap-app-v5";
+const CACHE_NAME = "mindmap-app-v6";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -6,7 +6,7 @@ const APP_SHELL = [
   "./styles.css",
   "./render-svg.mjs",
   "./manifest.webmanifest",
-  "./assets/mindmap.svg",
+  "./assets/mindmap.png",
   "../examples/rpent-libero-behavior.diagram.json"
 ];
 

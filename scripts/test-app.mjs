@@ -49,13 +49,13 @@ assert.equal(build.code, 0, `${build.stdout}\n${build.stderr}`);
 const builtIndex = await fs.readFile(path.join(root, "dist", "app", "index.html"), "utf8");
 assert.ok(builtIndex.includes("./app.js"));
 assert.ok(builtIndex.includes("./manifest.webmanifest"));
-await fs.access(path.join(root, "dist", "app", "assets", "mindmap.svg"));
+await fs.access(path.join(root, "dist", "app", "assets", "mindmap.png"));
 await fs.access(path.join(root, "dist", "app", "service-worker.js"));
 const manifest = JSON.parse(await fs.readFile(path.join(root, "dist", "app", "manifest.webmanifest"), "utf8"));
 assert.equal(manifest.name, "MindMap");
 assert.equal(manifest.display, "standalone");
 assert.equal(manifest.start_url, "./");
-assert.ok(manifest.icons.some((icon) => icon.src === "./assets/mindmap.svg"));
+assert.ok(manifest.icons.some((icon) => icon.src === "./assets/mindmap.png"));
 
 console.log(JSON.stringify({
   ok: true,

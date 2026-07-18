@@ -9,9 +9,9 @@
   "theme_color": "#ffffff",
   "icons": [
     {
-      "src": "./assets/mindmap.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "./assets/mindmap.png",
+      "sizes": "1254x1254",
+      "type": "image/png",
       "purpose": "any maskable"
     }
   ]

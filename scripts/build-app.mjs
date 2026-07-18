@@ -86,7 +86,7 @@ console.log(JSON.stringify({
   copied: {
     app: copiedApp,
     examples: copiedExamples,
-    assets: [path.join(appOut, "assets", "mindmap.svg")]
+    assets: [path.join(appOut, "assets", "mindmap.png")]
   },
   generated
 }, null, 2));
