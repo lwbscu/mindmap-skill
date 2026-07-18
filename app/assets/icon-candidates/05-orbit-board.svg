@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="MindMap orbit board icon candidate">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="38%" r="70%">
+      <stop offset="0" stop-color="#334155"/>
+      <stop offset="1" stop-color="#020617"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" rx="116" fill="url(#bg)"/>
+  <circle cx="256" cy="256" r="148" fill="none" stroke="#475569" stroke-width="10"/>
+  <circle cx="256" cy="256" r="94" fill="#ffffff" stroke="#e2e8f0" stroke-width="10"/>
+  <path d="M184 256h144M256 184v144" stroke="#111827" stroke-width="14" stroke-linecap="round"/>
+  <rect x="176" y="152" width="160" height="50" rx="16" fill="#dbeafe" stroke="#60a5fa" stroke-width="8"/>
+  <rect x="108" y="300" width="150" height="50" rx="16" fill="#fed7aa" stroke="#fb923c" stroke-width="8"/>
+  <rect x="254" y="300" width="150" height="50" rx="16" fill="#bbf7d0" stroke="#22c55e" stroke-width="8"/>
+  <circle cx="256" cy="256" r="26" fill="#ef4444"/>
+  <path d="M256 202v30M216 284l-28 20M296 284l28 20" stroke="#ef4444" stroke-width="10" stroke-linecap="round"/>
+  <path d="M166 176h180M138 325h90M284 325h90" stroke="#111827" stroke-width="9" stroke-linecap="round" opacity="0.75"/>
+</svg>
