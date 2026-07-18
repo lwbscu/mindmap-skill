@@ -1,47 +1,39 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="MindMap orange brain bulb symbol with nodes">
-  <title>MindMap orange brain bulb symbol with nodes</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="MindMap orange brain bulb symbol">
+  <title>MindMap orange brain bulb symbol</title>
   <defs>
-    <linearGradient id="bg" x1="64" y1="34" x2="448" y2="478" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#dff4fb"/>
-      <stop offset="1" stop-color="#c5e9f5"/>
+    <linearGradient id="bg" x1="76" y1="42" x2="430" y2="474" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d8f0f8"/>
+      <stop offset="1" stop-color="#c7e7f2"/>
+    </linearGradient>
+    <linearGradient id="orange" x1="164" y1="70" x2="330" y2="440" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f0b42d"/>
+      <stop offset=".58" stop-color="#eca214"/>
+      <stop offset="1" stop-color="#df8a05"/>
     </linearGradient>
   </defs>
-  <rect x="34" y="34" width="444" height="444" rx="92" fill="url(#bg)"/>
-
-  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
-    <g stroke="#77a9bf" stroke-width="8" opacity=".52">
-      <path d="M174 260c-43 11-78 31-104 62"/>
-      <path d="M338 260c43 11 78 31 104 62"/>
-      <path d="M216 340c-32 18-57 43-75 74"/>
-      <path d="M296 340c32 18 57 43 75 74"/>
-    </g>
-    <g stroke="#eea414" stroke-width="9" fill="#eaf8fd">
-      <circle cx="70" cy="322" r="18"/>
-      <circle cx="442" cy="322" r="18"/>
-      <circle cx="141" cy="414" r="17"/>
-      <circle cx="371" cy="414" r="17"/>
-    </g>
+  <rect width="512" height="512" rx="104" fill="url(#bg)"/>
+  <g fill="none" stroke="url(#orange)" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M256 50v34" stroke-width="12"/>
+    <path d="M207 61l14 32" stroke-width="12"/>
+    <path d="M305 61l-14 32" stroke-width="12"/>
+    <path d="M161 91l27 28" stroke-width="12"/>
+    <path d="M351 91l-27 28" stroke-width="12"/>
+    <path d="M123 133l36 21" stroke-width="12"/>
+    <path d="M389 133l-36 21" stroke-width="12"/>
+    <path d="M101 184l43 8" stroke-width="12"/>
+    <path d="M411 184l-43 8" stroke-width="12"/>
+    <path d="M94 238l42-6" stroke-width="12"/>
+    <path d="M418 238l-42-6" stroke-width="12"/>
+    <circle cx="256" cy="235" r="116" stroke-width="18"/>
+    <path d="M224 343v48" stroke-width="17"/>
+    <path d="M288 343v48" stroke-width="17"/>
+    <path d="M256 296v92" stroke-width="13"/>
+    <path d="M205 232c-13-25 8-51 36-44 10-25 45-27 61-4 25-2 47 19 47 45 17 11 17 37 0 50-18 15-47 10-61-11-15 25-53 27-72 5-24 1-40-16-40-37 0-18 12-34 29-38z" stroke-width="16"/>
+    <path d="M234 212c18-1 33 14 33 36" stroke-width="11"/>
+    <path d="M293 210c-18 8-27 25-23 47" stroke-width="11"/>
+    <path d="M209 253c21-10 44-3 59 14" stroke-width="11"/>
+    <path d="M307 250c-10 17-30 27-54 23" stroke-width="11"/>
   </g>
-
-  <g fill="none" stroke="#eea414" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M256 72v28" stroke-width="10"/>
-    <path d="M211 86l13 24" stroke-width="10"/>
-    <path d="M301 86l-13 24" stroke-width="10"/>
-    <path d="M165 133l23 17" stroke-width="10"/>
-    <path d="M347 133l-23 17" stroke-width="10"/>
-    <path d="M138 199h29" stroke-width="10"/>
-    <path d="M345 199h29" stroke-width="10"/>
-    <path d="M180 210c0-49 34-89 76-89s76 40 76 89c0 36-18 61-45 80-15 10-20 25-20 48h-22c0-23-5-38-20-48-27-19-45-44-45-80z" stroke-width="16"/>
-    <path d="M214 207c0-18 14-32 32-32 10-18 38-18 50 1 19 0 35 15 36 34 12 8 16 24 9 36-7 12-20 18-38 18h-91c-18 0-31-12-31-29 0-13 8-24 21-28z" stroke-width="11"/>
-    <path d="M232 203c12 2 22 12 22 28v31" stroke-width="9"/>
-    <path d="M281 200c-16 6-25 18-25 33" stroke-width="9"/>
-    <path d="M206 233c15-8 33-4 45 9" stroke-width="9"/>
-    <path d="M292 228c11 10 10 26-2 35" stroke-width="9"/>
-    <path d="M226 260c22 12 53 8 70-11" stroke-width="9"/>
-    <path d="M256 276v59" stroke-width="13"/>
-    <path d="M224 354h64" stroke-width="18"/>
-    <path d="M219 381h74" stroke-width="18"/>
-    <path d="M230 407h52" stroke-width="18"/>
-  </g>
-  <path d="M231 423h50l-12 29h-26z" fill="#eea414"/>
+  <path d="M207 389h98v52l-16 28h-66l-16-28z" fill="url(#orange)"/>
+  <path d="M222 389h68" stroke="#f7d36d" stroke-width="8" stroke-linecap="round" opacity=".55"/>
 </svg>

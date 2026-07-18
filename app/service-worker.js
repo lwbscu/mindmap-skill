@@ -1,4 +1,4 @@
-const CACHE_NAME = "mindmap-app-v1";
+const CACHE_NAME = "mindmap-app-v3";
 const APP_SHELL = [
   "./",
   "./index.html",
