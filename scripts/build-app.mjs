@@ -28,11 +28,19 @@ function slugFromTitle(title) {
 await fs.rm(dist, { recursive: true, force: true });
 await fs.mkdir(dist, { recursive: true });
 
-const appFiles = ["index.html", "app.js", "styles.css", "render-svg.mjs"];
+const appFiles = [
+  "index.html",
+  "app.js",
+  "styles.css",
+  "render-svg.mjs",
+  "manifest.webmanifest",
+  "service-worker.js"
+];
 const copiedApp = [];
 for (const file of appFiles) {
   copiedApp.push(await copyFileInto(path.join(root, "app", file), appOut));
 }
+await fs.cp(path.join(root, "app", "assets"), path.join(appOut, "assets"), { recursive: true });
 
 const exampleNames = (await fs.readdir(path.join(root, "examples")))
   .filter((file) => file.endsWith(".diagram.json"))
@@ -77,7 +85,8 @@ console.log(JSON.stringify({
   dist,
   copied: {
     app: copiedApp,
-    examples: copiedExamples
+    examples: copiedExamples,
+    assets: [path.join(appOut, "assets", "mindmap.svg")]
   },
   generated
 }, null, 2));

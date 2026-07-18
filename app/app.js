@@ -102,3 +102,11 @@ window.addEventListener("resize", fitReadable);
 loadDefault().catch((error) => {
   stage.textContent = error.stack || error.message;
 });
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./service-worker.js").catch(() => {
+      // The app works without offline caching.
+    });
+  });
+}

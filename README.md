@@ -9,6 +9,7 @@ MindMap 是一个面向 Claude Code 与 Codex 的交互式结构框图工具。�
 - Render architecture diagrams from stable `mindmap-app/v1` JSON.
 - Use large readable text, pastel layer bands, explicit arrow routes, and label backgrounds.
 - Preview diagrams in a browser with zoom, scroll, JSON loading, SVG download, and standalone HTML download.
+- Install MindMap as a local desktop launcher on Linux and as a browser PWA when supported.
 - Publish the static app to GitHub Pages without runtime dependencies.
 - Keep architecture claims evidence-backed and mark unsupported facts as `Unknown / 待确认`.
 
@@ -49,6 +50,28 @@ npm run app:serve
 ```
 
 Open the printed `/app/` URL in a browser. The default example is [`examples/rpent-libero-behavior.diagram.json`](examples/rpent-libero-behavior.diagram.json). Use **打开 JSON** in the app to load another diagram file.
+
+Install a Linux desktop launcher so MindMap appears in Applications:
+
+```bash
+npm run app:install-desktop
+```
+
+After installation, search for **MindMap** in Applications. The launcher starts the local app server when needed and opens the app in your browser.
+
+Open MindMap from the command line using the same launcher behavior:
+
+```bash
+npm run app:open
+```
+
+Remove the desktop launcher:
+
+```bash
+npm run app:uninstall-desktop
+```
+
+The app also includes a web manifest, service worker, and SVG icon so supported browsers can install it from the hosted `/app/` page.
 
 Build the GitHub Pages artifact:
 
