@@ -1,79 +1,38 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="MindMap polished minimal bulb nodes icon candidate">
-  <title>MindMap polished minimal bulb nodes icon candidate</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="MindMap branch app logo candidate">
+  <title>MindMap branch app logo candidate</title>
   <defs>
-    <linearGradient id="paper" x1="48" y1="34" x2="466" y2="474" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#fffefa"/>
-      <stop offset=".55" stop-color="#fbfdff"/>
-      <stop offset="1" stop-color="#ecf8ff"/>
+    <linearGradient id="tile" x1="56" y1="42" x2="456" y2="480" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#14d0bd"/>
+      <stop offset=".5" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#42138f"/>
     </linearGradient>
-    <linearGradient id="panel" x1="94" y1="78" x2="420" y2="434" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#ffffff"/>
-      <stop offset=".64" stop-color="#fbfdff"/>
-      <stop offset="1" stop-color="#f1f9ff"/>
+    <linearGradient id="gloss" x1="86" y1="52" x2="292" y2="288" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".34"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
     </linearGradient>
-    <linearGradient id="bulb" x1="212" y1="128" x2="304" y2="270" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#fff9bf"/>
-      <stop offset=".5" stop-color="#f8cd62"/>
-      <stop offset="1" stop-color="#ee9e39"/>
-    </linearGradient>
-    <linearGradient id="bulbGlow" x1="206" y1="152" x2="306" y2="288" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#fff7ad" stop-opacity=".72"/>
-      <stop offset="1" stop-color="#f5bd47" stop-opacity="0"/>
-    </linearGradient>
-    <radialGradient id="nodeBlue" cx="34%" cy="28%" r="72%">
-      <stop offset="0" stop-color="#ffffff"/>
-      <stop offset="1" stop-color="#88d8f2"/>
-    </radialGradient>
-    <radialGradient id="nodeGold" cx="34%" cy="28%" r="72%">
-      <stop offset="0" stop-color="#fffde7"/>
-      <stop offset="1" stop-color="#f5c957"/>
-    </radialGradient>
-    <radialGradient id="nodePink" cx="34%" cy="28%" r="72%">
-      <stop offset="0" stop-color="#fff8fb"/>
-      <stop offset="1" stop-color="#f0a5c7"/>
-    </radialGradient>
-    <radialGradient id="nodeGreen" cx="34%" cy="28%" r="72%">
-      <stop offset="0" stop-color="#ffffff"/>
-      <stop offset="1" stop-color="#afe99c"/>
-    </radialGradient>
-    <filter id="drop" x="-15%" y="-15%" width="130%" height="138%">
-      <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#64748b" flood-opacity=".2"/>
+    <filter id="tileShadow" x="-18%" y="-18%" width="136%" height="142%">
+      <feDropShadow dx="0" dy="20" stdDeviation="24" flood-color="#1e293b" flood-opacity=".28"/>
     </filter>
-    <filter id="near" x="-25%" y="-25%" width="150%" height="160%">
-      <feDropShadow dx="0" dy="7" stdDeviation="6" flood-color="#64748b" flood-opacity=".24"/>
-    </filter>
-    <filter id="warmGlow" x="-35%" y="-35%" width="170%" height="170%">
-      <feGaussianBlur stdDeviation="11" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
+    <filter id="symbolShadow" x="-18%" y="-18%" width="136%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="8" flood-color="#1e293b" flood-opacity=".26"/>
     </filter>
   </defs>
-  <rect x="14" y="14" width="484" height="484" rx="108" fill="url(#paper)" stroke="#d8e2ef" stroke-width="6"/>
-  <g filter="url(#drop)">
-    <rect x="72" y="68" width="368" height="374" rx="88" fill="url(#panel)" stroke="#d9e5f2" stroke-width="5"/>
+  <rect x="34" y="34" width="444" height="444" rx="104" fill="url(#tile)" filter="url(#tileShadow)"/>
+  <path d="M70 124c0-37 30-67 67-67h139C200 95 144 160 110 254c-14 38-24 80-31 126-6-14-9-29-9-45z" fill="url(#gloss)"/>
+  <g filter="url(#symbolShadow)" fill="none" stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M256 248V144" stroke-width="26"/>
+    <path d="M256 248L150 190" stroke-width="26"/>
+    <path d="M256 248L362 190" stroke-width="26"/>
+    <path d="M256 248L176 344" stroke-width="26"/>
+    <path d="M256 248L336 344" stroke-width="26"/>
   </g>
-  <path d="M140 166c42-43 82-62 128-60 43 1 78 18 113 53M120 326c49 50 94 72 137 71 43 0 88-23 135-71" fill="none" stroke="#dce8f5" stroke-width="8" stroke-linecap="round"/>
-  <path d="M256 253L135 158M256 253l121-95M256 253H108M256 253h148M256 292l-88 101M256 292l88 101" fill="none" stroke="#273244" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
-  <g filter="url(#near)" stroke="#273244" stroke-width="9">
-    <circle cx="136" cy="160" r="38" fill="url(#nodeBlue)"/>
-    <circle cx="376" cy="160" r="38" fill="url(#nodeGold)"/>
-    <circle cx="108" cy="254" r="37" fill="#d8cef8"/>
-    <circle cx="404" cy="254" r="37" fill="url(#nodePink)"/>
-    <circle cx="168" cy="392" r="38" fill="url(#nodeGreen)"/>
-    <circle cx="344" cy="392" r="38" fill="#ffd4a5"/>
+  <g filter="url(#symbolShadow)" stroke="#ffffff" stroke-width="14">
+    <circle cx="256" cy="248" r="38" fill="#ffffff"/>
+    <circle cx="256" cy="144" r="31" fill="#ffffff"/>
+    <circle cx="150" cy="190" r="31" fill="#ffffff"/>
+    <circle cx="362" cy="190" r="31" fill="#ffffff"/>
+    <circle cx="176" cy="344" r="31" fill="#ffffff"/>
+    <circle cx="336" cy="344" r="31" fill="#ffffff"/>
   </g>
-  <path d="M122 140c8-8 17-13 28-15M361 140c8-8 18-13 29-15M390 238c8-8 18-13 29-15M153 374c8-8 18-13 29-15" stroke="#ffffff" stroke-width="7" stroke-linecap="round" opacity=".75"/>
-  <circle cx="256" cy="254" r="108" fill="url(#bulbGlow)" filter="url(#warmGlow)" opacity=".72"/>
-  <g filter="url(#drop)">
-    <circle cx="256" cy="254" r="92" fill="#ffffff" stroke="#273244" stroke-width="11"/>
-    <circle cx="256" cy="254" r="70" fill="#fffdf8" stroke="#edf4fa" stroke-width="6"/>
-    <path d="M214 228c0-28 20-51 42-51s42 23 42 51c0 18-9 33-22 44-8 7-10 14-10 24h-20c0-10-2-17-10-24-13-11-22-26-22-44z" fill="url(#bulb)" stroke="#273244" stroke-width="9" stroke-linejoin="round"/>
-    <path d="M241 302h31M239 322h35M247 341h19" stroke="#273244" stroke-width="9" stroke-linecap="round"/>
-    <path d="M239 223c6-15 17-24 32-25" fill="none" stroke="#fff7c2" stroke-width="8" stroke-linecap="round" opacity=".9"/>
-    <path d="M245 263c-3-19 25-19 22 0" fill="none" stroke="#273244" stroke-width="6" stroke-linecap="round"/>
-  </g>
-  <path d="M256 118v26M202 141l16 22M310 141l-16 22M179 195l24 12M333 195l-24 12" stroke="#f0b949" stroke-width="9" stroke-linecap="round"/>
-  <path d="M119 137l-13-16M392 137l14-16M90 226l-19-7M422 226l19-7M112 353l-16 14M400 353l16 14" stroke="#d7e4f2" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="256" cy="248" r="17" fill="#2563eb" opacity=".96"/>
 </svg>

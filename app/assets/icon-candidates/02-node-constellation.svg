@@ -1,91 +1,31 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="MindMap polished brain spark map icon candidate">
-  <title>MindMap polished brain spark map icon candidate</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="MindMap purple M branch app logo candidate">
+  <title>MindMap purple M branch app logo candidate</title>
   <defs>
-    <linearGradient id="paper" x1="48" y1="34" x2="466" y2="474" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#fffefa"/>
-      <stop offset=".55" stop-color="#f8fcff"/>
-      <stop offset="1" stop-color="#eaf6ff"/>
+    <linearGradient id="tile" x1="64" y1="46" x2="452" y2="476" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#9368ff"/>
+      <stop offset=".45" stop-color="#6333db"/>
+      <stop offset="1" stop-color="#38117f"/>
     </linearGradient>
-    <linearGradient id="headFill" x1="112" y1="122" x2="370" y2="448" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#ffffff"/>
-      <stop offset=".75" stop-color="#fffefb"/>
-      <stop offset="1" stop-color="#f2f8ff"/>
+    <linearGradient id="gloss" x1="92" y1="58" x2="290" y2="278" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".34"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
     </linearGradient>
-    <linearGradient id="brainFill" x1="166" y1="156" x2="328" y2="302" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#ecfbff"/>
-      <stop offset=".48" stop-color="#bceee4"/>
-      <stop offset="1" stop-color="#9ed9cd"/>
-    </linearGradient>
-    <linearGradient id="warmCard" x1="352" y1="78" x2="456" y2="154" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#fff1b5"/>
-      <stop offset="1" stop-color="#ffd56e"/>
-    </linearGradient>
-    <linearGradient id="coolCard" x1="364" y1="350" x2="468" y2="430" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#efe9ff"/>
-      <stop offset="1" stop-color="#cfc1ff"/>
-    </linearGradient>
-    <linearGradient id="halo" x1="145" y1="96" x2="360" y2="340" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#fff0a3" stop-opacity=".8"/>
-      <stop offset=".58" stop-color="#b8eeff" stop-opacity=".28"/>
-      <stop offset="1" stop-color="#b8eeff" stop-opacity="0"/>
-    </linearGradient>
-    <radialGradient id="nodeGold" cx="35%" cy="28%" r="72%">
-      <stop offset="0" stop-color="#fffbe7"/>
-      <stop offset="1" stop-color="#f5bd47"/>
-    </radialGradient>
-    <radialGradient id="nodePink" cx="34%" cy="30%" r="72%">
-      <stop offset="0" stop-color="#fff7fb"/>
-      <stop offset="1" stop-color="#eda0c5"/>
-    </radialGradient>
-    <radialGradient id="nodeBlue" cx="35%" cy="30%" r="72%">
-      <stop offset="0" stop-color="#f8fdff"/>
-      <stop offset="1" stop-color="#82d5ef"/>
-    </radialGradient>
-    <radialGradient id="nodeGreen" cx="35%" cy="30%" r="72%">
-      <stop offset="0" stop-color="#ffffff"/>
-      <stop offset="1" stop-color="#afe89f"/>
-    </radialGradient>
-    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M1 1l8 4-8 4z" fill="#273244"/>
-    </marker>
-    <filter id="drop" x="-18%" y="-18%" width="136%" height="145%">
-      <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#64748b" flood-opacity=".2"/>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="145%">
+      <feDropShadow dx="0" dy="20" stdDeviation="22" flood-color="#2e1065" flood-opacity=".36"/>
     </filter>
-    <filter id="near" x="-20%" y="-20%" width="140%" height="145%">
-      <feDropShadow dx="0" dy="7" stdDeviation="7" flood-color="#64748b" flood-opacity=".2"/>
-    </filter>
-    <filter id="glow" x="-25%" y="-25%" width="150%" height="150%">
-      <feGaussianBlur stdDeviation="9" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
+    <filter id="markShadow" x="-15%" y="-15%" width="130%" height="135%">
+      <feDropShadow dx="0" dy="10" stdDeviation="8" flood-color="#2e1065" flood-opacity=".3"/>
     </filter>
   </defs>
-  <rect x="14" y="14" width="484" height="484" rx="92" fill="url(#paper)" stroke="#d8e2ef" stroke-width="6"/>
-  <circle cx="254" cy="238" r="140" fill="url(#halo)" filter="url(#glow)" opacity=".9"/>
-  <path d="M130 342c-25-36-33-82-19-125 22-68 84-106 154-99 72 7 126 63 130 135 3 48-17 91-52 120l-13 81-72-39c-48 6-94-19-128-73z" fill="url(#headFill)" stroke="#273244" stroke-width="11" stroke-linejoin="round" filter="url(#drop)"/>
-  <path d="M144 352c25 20 55 30 89 31" fill="none" stroke="#273244" stroke-width="7" stroke-linecap="round"/>
-  <path d="M333 213c20 22 29 51 24 80" fill="none" stroke="#dbe8f5" stroke-width="8" stroke-linecap="round"/>
-  <g filter="url(#near)">
-    <path d="M176 230c-20-38 13-82 52-68 17-30 62-27 77 5 35-7 63 29 48 62 24 23 9 64-26 70H203c-35-2-52-41-27-69z" fill="url(#brainFill)" stroke="#273244" stroke-width="8" stroke-linejoin="round"/>
-    <path d="M198 226c7-20 27-30 50-23M265 190c27 3 44 19 49 46M211 278c25 12 61 9 84-10M328 235c8 18 5 36-8 49" fill="none" stroke="#ffffff" stroke-width="7" stroke-linecap="round" opacity=".82"/>
+  <rect x="34" y="34" width="444" height="444" rx="104" fill="url(#tile)" filter="url(#shadow)"/>
+  <path d="M68 125c0-38 31-69 69-69h142C202 92 145 156 111 252c-14 38-24 81-31 129-8-15-12-32-12-50z" fill="url(#gloss)"/>
+  <g filter="url(#markShadow)">
+    <path d="M123 336l38-164h62l33 82 33-82h62l38 164h-56l-23-101-36 101h-37l-36-101-23 101z" fill="#ffffff"/>
+    <path d="M178 336l58-126h40l58 126h-51l-27-67-27 67z" fill="#f1efff"/>
+    <circle cx="190" cy="151" r="18" fill="#ffffff"/>
+    <circle cx="256" cy="257" r="18" fill="#ffffff"/>
+    <circle cx="322" cy="151" r="18" fill="#ffffff"/>
+    <path d="M190 151c33 25 49 58 66 106 17-48 33-81 66-106" fill="none" stroke="#ffffff" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
-  <path d="M213 248h44l37-38M257 248l44 42M227 216l30 32M225 281l32-33M257 248l-2-38" fill="none" stroke="#273244" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="257" cy="248" r="10" fill="#ffffff" stroke="#273244" stroke-width="5"/>
-  <circle cx="213" cy="248" r="17" fill="url(#nodeGold)" stroke="#273244" stroke-width="6"/>
-  <circle cx="294" cy="210" r="17" fill="url(#nodePink)" stroke="#273244" stroke-width="6"/>
-  <circle cx="301" cy="290" r="17" fill="url(#nodeBlue)" stroke="#273244" stroke-width="6"/>
-  <circle cx="227" cy="216" r="15" fill="url(#nodeGreen)" stroke="#273244" stroke-width="6"/>
-  <circle cx="225" cy="281" r="14" fill="#d7cdf8" stroke="#273244" stroke-width="6"/>
-  <g filter="url(#drop)">
-    <rect x="356" y="82" width="92" height="66" rx="22" fill="url(#warmCard)" stroke="#273244" stroke-width="7"/>
-    <rect x="374" y="356" width="94" height="66" rx="23" fill="url(#coolCard)" stroke="#273244" stroke-width="7"/>
-  </g>
-  <path d="M374 108h48M390 126h24M393 382h36M405 400h18" stroke="#ffffff" stroke-width="7" stroke-linecap="round" opacity=".88"/>
-  <path d="M348 155c26 10 47 27 60 51" fill="none" stroke="#273244" stroke-width="9" stroke-linecap="round" marker-end="url(#arrow)"/>
-  <path d="M362 306c30 9 53 25 68 47" fill="none" stroke="#273244" stroke-width="9" stroke-linecap="round" marker-end="url(#arrow)"/>
-  <path d="M247 82v26M204 99l14 21M289 99l-14 21M171 126l21 15" stroke="#f0b949" stroke-width="8" stroke-linecap="round"/>
-  <path d="M410 204l14-14M426 221h21M405 236l16 13" stroke="#d5e3f0" stroke-width="7" stroke-linecap="round"/>
-  <path d="M86 240c-12 10-20 23-23 39M82 320c9 14 22 24 38 29" stroke="#d8e6f4" stroke-width="8" stroke-linecap="round"/>
+  <path d="M160 372h194" stroke="#cbbcff" stroke-width="13" stroke-linecap="round" opacity=".66"/>
 </svg>
