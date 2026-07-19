@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createProjectStore } from "./project-store.mjs";
 
 const require = createRequire(import.meta.url);
 const { app, BrowserWindow, dialog, ipcMain, protocol, shell } = require("electron");
@@ -13,11 +14,16 @@ const appName = "MindMap";
 const desktopName = "mindmap-app.desktop";
 const linuxWindowClass = "MindMap";
 const iconPath = path.join(root, "app", "assets", "mindmap.png");
-const preloadPath = path.join(__dirname, "preload.mjs");
+const preloadPath = path.join(__dirname, "preload.cjs");
 const isSmoke = process.env.MINDMAP_ELECTRON_SMOKE === "1" || process.argv.includes("--smoke");
 const isVisual = process.env.MINDMAP_ELECTRON_VISUAL === "1";
 const isAutomated = isSmoke || isVisual;
+const projectsDir = isAutomated && process.env.MINDMAP_PROJECTS_DIR
+  ? path.resolve(process.env.MINDMAP_PROJECTS_DIR)
+  : path.join(root, "projects");
+const projectStore = createProjectStore({ projectsDir });
 let authorizedJsonPath = "";
+let authorizedProjectFileName = "";
 
 if (isAutomated) {
   app.setPath("userData", path.join(process.env.TMPDIR || "/tmp", `mindmap-smoke-${process.pid}`));
@@ -132,7 +138,6 @@ function registerJsonIpc() {
     const filePath = result.filePaths[0];
     try {
       const diagram = await readJsonFile(filePath);
-      authorizedJsonPath = filePath;
       return { ok: true, filePath, diagram };
     } catch (error) {
       return { ok: false, filePath, error: error.message };
@@ -141,6 +146,14 @@ function registerJsonIpc() {
 
   ipcMain.handle("mindmap:save-json", async (_event, payload = {}) => {
     try {
+      if (authorizedProjectFileName) {
+        const result = await projectStore.save({
+          fileName: authorizedProjectFileName,
+          diagram: payload.diagram
+        });
+        authorizedJsonPath = result.filePath;
+        return { ok: true, filePath: result.filePath };
+      }
       const filePath = normalizeJsonPath(authorizedJsonPath);
       if (!filePath) throw new Error("No authorized JSON save path. Use Save As first.");
       const json = assertJsonValue(payload.diagram);
@@ -163,7 +176,52 @@ function registerJsonIpc() {
       const json = assertJsonValue(payload.diagram);
       await fs.writeFile(filePath, `${json}\n`, "utf8");
       authorizedJsonPath = filePath;
+      authorizedProjectFileName = "";
       return { ok: true, filePath };
+    } catch (error) {
+      return { ok: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle("mindmap:projects:list", async () => {
+    try {
+      return { ok: true, projects: await projectStore.list() };
+    } catch (error) {
+      return { ok: false, projects: [], error: error.message };
+    }
+  });
+
+  ipcMain.handle("mindmap:projects:create", async (_event, payload = {}) => {
+    try {
+      const result = await projectStore.create({
+        name: payload.name,
+        diagram: payload.diagram
+      });
+      authorizedJsonPath = result.filePath;
+      authorizedProjectFileName = result.fileName;
+      return { ok: true, ...result };
+    } catch (error) {
+      return { ok: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle("mindmap:projects:open", async (_event, payload = {}) => {
+    try {
+      const result = await projectStore.open({ fileName: payload.fileName });
+      authorizedJsonPath = result.filePath;
+      authorizedProjectFileName = result.fileName;
+      return { ok: true, ...result };
+    } catch (error) {
+      return { ok: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle("mindmap:projects:authorize", async (_event, payload = {}) => {
+    try {
+      const result = await projectStore.authorize({ filePath: payload.filePath });
+      authorizedJsonPath = result.filePath;
+      authorizedProjectFileName = result.fileName;
+      return { ok: true, ...result };
     } catch (error) {
       return { ok: false, error: error.message };
     }
@@ -460,6 +518,77 @@ async function runSmoke(window) {
       title: document.title,
       viewport: { innerWidth, innerHeight, dpr: devicePixelRatio, graphWidth: document.querySelector('#graph-shell')?.clientWidth, graphHeight: document.querySelector('#graph-shell')?.clientHeight }
     }))()`);
+
+    smokeStep = "new blank project";
+    const desktopProjectApi = await evaluate(`(() => ({
+      desktop: Boolean(window.mindmapDesktop?.isDesktop),
+      keys: Object.keys(window.mindmapDesktop || {}),
+      projectKeys: Object.keys(window.mindmapDesktop?.projects || {})
+    }))()`);
+    await evaluate('document.querySelector("#graph-canvas")?.focus()');
+    await shortcut("N");
+    const unsavedGuardShown = await evaluate('Boolean(document.querySelector("#unsaved-dialog")?.open)');
+    if (unsavedGuardShown) {
+      await evaluate(`document.querySelector('[data-unsaved-choice="discard"]')?.click()`);
+      await pause(80);
+    }
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      if (await evaluate('Boolean(document.querySelector("#project-dialog")?.open)')) break;
+      await pause(30);
+    }
+    const newProjectCommandSeen = await evaluate(`document.documentElement.dataset.lastShortcut === 'new-project-dialog'`);
+    const projectDialogOpened = await evaluate('Boolean(document.querySelector("#project-dialog")?.open)');
+    if (!projectDialogOpened) throw new Error(`project dialog did not open; shortcutSeen=${newProjectCommandSeen}`);
+    const projectDialogMetrics = await evaluate(`(() => {
+      const element = document.querySelector('#project-dialog');
+      const rect = element?.getBoundingClientRect();
+      return rect ? { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height, withinViewport: rect.left >= 0 && rect.top >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight } : null;
+    })()`);
+    const projectDialogFocusState = await evaluate(`(() => {
+      const shell = document.querySelector('#app-shell');
+      const dialog = document.querySelector('#project-dialog');
+      const shellStyle = shell ? getComputedStyle(shell) : null;
+      const backdropStyle = dialog ? getComputedStyle(dialog, '::backdrop') : null;
+      return {
+        shellOpacity: Number(shellStyle?.opacity || 1),
+        shellFilter: shellStyle?.filter || '',
+        backdropColor: backdropStyle?.backgroundColor || '',
+        backdropFilter: backdropStyle?.backdropFilter || ''
+      };
+    })()`);
+    const projectDialogScreenshotPath = path.join(process.env.TMPDIR || "/tmp", "mindmap-project-dialog.png");
+    await fs.writeFile(projectDialogScreenshotPath, (await window.webContents.capturePage()).toPNG());
+    await evaluate(`(() => {
+      const input = document.querySelector('#project-name');
+      const form = document.querySelector('#project-form');
+      if (!input || !form) return false;
+      input.value = 'Smoke Blank Project';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      form.requestSubmit();
+      return true;
+    })()`);
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const ready = await evaluate(`document.documentElement.dataset.lastShortcut === 'new-project' && Number(document.querySelector('#node-count')?.textContent || -1) === 0`);
+      if (ready) break;
+      await pause(35);
+    }
+    const newProjectShortcutSeen = await evaluate(`document.documentElement.dataset.lastShortcut === 'new-project'`);
+    const blankProjectNodeCount = await semanticNodeCount();
+    const blankProjectEdgeCount = await semanticEdgeCount();
+    const blankProjectCreated = newProjectShortcutSeen && blankProjectNodeCount === 0 && blankProjectEdgeCount === 0 && Boolean(authorizedProjectFileName);
+    const blankProjectError = await evaluate(`document.querySelector('#error-message')?.textContent || ''`);
+
+    smokeStep = "save blank project";
+    await shortcut("S");
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      if (await evaluate(`document.querySelector('#save-status')?.textContent === '已保存'`)) break;
+      await pause(30);
+    }
+    const saveShortcutSeen = await evaluate(`document.documentElement.dataset.lastShortcut === 'save'`);
+    const projectSaved = await evaluate(`document.querySelector('#save-status')?.textContent === '已保存'`);
+    const projectFilePath = authorizedJsonPath;
+    const projectFileExists = Boolean(projectFilePath) && await fs.access(projectFilePath).then(() => true, () => false);
+
     Object.assign(result, {
       nodesBefore: initial.nodes,
       edgesBefore: initial.edges,
@@ -499,6 +628,22 @@ async function runSmoke(window) {
       connectionUndoRestored: edgesAfterConnectUndo === initial.edges,
       addShortcutSeen,
       dependencyViewActive,
+      newProjectShortcutSeen,
+      unsavedGuardShown,
+      newProjectCommandSeen,
+      projectDialogOpened,
+      blankProjectCreated,
+      blankProjectNodeCount,
+      blankProjectEdgeCount,
+      blankProjectError,
+      desktopProjectApi,
+      saveShortcutSeen,
+      projectSaved,
+      projectFileExists,
+      projectFilePath,
+      projectDialogMetrics,
+      projectDialogFocusState,
+      projectDialogScreenshotPath,
       zoomValue,
       screenshotPath
     });

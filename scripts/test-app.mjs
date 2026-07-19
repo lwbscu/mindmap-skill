@@ -266,20 +266,30 @@ const appIndex = await fs.readFile(path.join(root, "app", "index.html"), "utf8")
 const appScript = await fs.readFile(path.join(root, "app", "app.js"), "utf8");
 const appStyles = await fs.readFile(path.join(root, "app", "styles.css"), "utf8");
 const desktopMain = await fs.readFile(path.join(root, "desktop", "main.mjs"), "utf8");
-for (const id of ["app-shell", "graph-canvas", "marquee", "lasso-overlay", "minimap", "node-list", "layer-list", "inspector-content", "selection-toolbar", "zoom-percent", "add-node", "toggle-left", "toggle-right", "error-banner"]) {
+for (const id of ["app-shell", "graph-canvas", "marquee", "lasso-overlay", "minimap", "node-list", "layer-list", "inspector-content", "selection-toolbar", "zoom-percent", "add-node", "toggle-left", "toggle-right", "error-banner", "new-project-button", "projects-button", "project-dialog", "project-form", "project-name", "project-list", "unsaved-dialog"]) {
   assert.ok(appIndex.includes(`id="${id}"`), `app index missing ${id}`);
 }
-for (const snippet of ["new Graph(", "new Selection(", "new Scroller(", "new MiniMap(", "selectByMarquee", "pasteSubgraph", "createInlineEditor", "applySelectedNodeStyle", "edge:connected", "autoLayout", "exportPdf", "exportMermaid", "data-view-mode"]) {
+for (const snippet of ["new Graph(", "new Selection(", "new Scroller(", "new MiniMap(", "selectByMarquee", "pasteSubgraph", "createInlineEditor", "applySelectedNodeStyle", "edge:connected", "autoLayout", "exportPdf", "exportMermaid", "data-view-mode", "createBlankDiagram", "createNewProject", "window.mindmapDesktop.projects.create", "mod && key === \"n\""]) {
   assert.ok(appScript.includes(snippet), `app script missing ${snippet}`);
 }
 for (const selector of [".app-shell", ".topbar", ".sidebar", ".inspector", ".canvas-controls", ".selection-toolbar", ".minimap-shell", ".x6-widget-selection-box"]) {
   assert.ok(appStyles.includes(selector), `app styles missing ${selector}`);
+}
+assert.ok(appStyles.includes("body:has(.project-library-dialog[open]) #app-shell"), "project dialog must quiet the canvas background");
+assert.ok(appScript.indexOf('mod && key === "s"') < appScript.indexOf("if (typing) return"), "Ctrl/Cmd+S must work while editing text");
+assert.ok(appScript.indexOf('mod && key === "n"') < appScript.indexOf("if (typing) return"), "Ctrl/Cmd+N must work while editing text");
+for (const key of ["c", "v", "z"]) {
+  assert.ok(appScript.indexOf(`mod && key === "${key}"`) > appScript.indexOf("if (typing) return"), `Ctrl/Cmd+${key.toUpperCase()} must remain text-local while editing`);
 }
 assert.ok(svg.includes('class="node-card"'));
 assert.ok(svg.includes('class="layer-tag"'));
 assert.ok(desktopMain.includes("protocol.handle(scheme"));
 assert.ok(desktopMain.includes("BrowserWindow"));
 assert.ok(desktopMain.includes("icon: iconPath"));
+assert.ok(desktopMain.includes('path.join(root, "projects")'));
+for (const channel of ["mindmap:projects:list", "mindmap:projects:create", "mindmap:projects:open", "mindmap:projects:authorize"]) {
+  assert.ok(desktopMain.includes(channel), `desktop main missing ${channel}`);
+}
 assert.ok(desktopMain.includes("StartupWMClass") || (await fs.readFile(path.join(root, "scripts", "install-desktop.mjs"), "utf8")).includes("StartupWMClass"));
 
 const builtIndex = await fs.readFile(path.join(root, "dist", "app", "index.html"), "utf8");

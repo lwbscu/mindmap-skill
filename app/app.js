@@ -10,11 +10,12 @@ import { Export } from "@antv/x6-plugin-export";
 import { Transform } from "@antv/x6-plugin-transform";
 import {
   AlignCenter, AlignHorizontalDistributeCenter, AlignLeft, AlignRight, AlignStartHorizontal, Braces,
-  ChevronDown, CircleAlert, CircleCheck, CircleDot, ClipboardCopy, Cloud,
+  ChevronDown, CircleAlert, CircleCheck, CircleDot, ClipboardCopy, Clock3, Cloud,
   createIcons, Download, EyeOff, FileCode2, FileImage, FileText, Focus,
-  FolderOpen, GitBranch, Grid3X3, Group, Hand, Image as ImageIcon, Minus,
+  FileInput, FilePlus2, FolderOpen, FolderPlus, FolderTree, GitBranch, Grid3X3,
+  Group, Hand, HardDrive, Image as ImageIcon, Minus,
   MousePointer2, Network, PanelLeft, PanelRight, Plus, Redo2, Scan, Search,
-  Square, StickyNote, Trash2, Undo2, WandSparkles, Workflow, X, Pencil,
+  Save, Square, StickyNote, Trash2, TriangleAlert, Undo2, WandSparkles, Workflow, X, Pencil,
   List, Link2, Code2, LayoutGrid, ImagePlus, MessageSquare,
 } from "lucide";
 
@@ -110,17 +111,20 @@ let activeRichTextMarks = {};
 let edgeRouteSnapshot = null;
 let blueprintCache = null;
 let lastPasteEventAt = 0;
+let hasUnsavedChanges = false;
+let unsavedDecisionResolve = null;
 
 const history = createCommandHistory({ limit: 100 });
 const interaction = createInteractionStateMachine();
 
 const lucideIcons = {
   AlignCenter, AlignHorizontalDistributeCenter, AlignLeft, AlignRight, AlignStartHorizontal, Braces,
-  ChevronDown, CircleAlert, CircleCheck, CircleDot, ClipboardCopy, Cloud,
-  Download, EyeOff, FileCode2, FileImage, FileText, Focus, FolderOpen,
-  GitBranch, Grid3x3: Grid3X3, Group, Hand, Image: ImageIcon, Minus,
+  ChevronDown, CircleAlert, CircleCheck, CircleDot, ClipboardCopy, Clock3, Cloud,
+  Download, EyeOff, FileCode2, FileImage, FileInput, FilePlus2, FileText, Focus,
+  FolderOpen, FolderPlus, FolderTree, GitBranch, Grid3x3: Grid3X3, Group, Hand,
+  HardDrive, Image: ImageIcon, Minus,
   MousePointer2, Network, PanelLeft, PanelRight, Plus, Redo2, Scan, Search,
-  Square, StickyNote, Trash2, Undo2, WandSparkles, Workflow, X, Pencil,
+  Save, Square, StickyNote, Trash2, TriangleAlert, Undo2, WandSparkles, Workflow, X, Pencil,
   List, Link2, Code2, LayoutGrid, ImagePlus, MessageSquare,
 };
 
@@ -175,6 +179,30 @@ function slug(value) {
     .toLowerCase()
     .replace(/[^a-z0-9\u4e00-\u9fff]+/g, "-")
     .replace(/^-|-$/g, "") || "mindmap";
+}
+
+function createBlankDiagram(title = "未命名项目") {
+  const normalizedTitle = String(title || "").trim() || "未命名项目";
+  return {
+    schemaVersion: "mindmap-app/v1",
+    title: normalizedTitle,
+    subtitle: "空白结构框图",
+    language: "zh-CN",
+    canvas: { width: 2400, height: 1480, background: "#ffffff" },
+    style: {
+      fontFamily: "Inter, Noto Sans CJK SC, Microsoft YaHei, sans-serif",
+      titleSize: 20,
+      subtitleSize: 13,
+      textColor: "#172033",
+      nodeFill: "#ffffff",
+      nodeStroke: "#c8d3e1",
+      edgeStroke: "#93a4b8",
+    },
+    assets: {},
+    layers: [],
+    nodes: [],
+    edges: [],
+  };
 }
 
 function refreshIcons(root = document) {
@@ -924,13 +952,17 @@ function redo() {
   updateHistoryButtons();
 }
 
-function scheduleAutosave() {
-  $("#save-status").textContent = "有未保存修改";
+function scheduleAutosave(options = {}) {
+  const markDirty = options.markDirty !== false;
+  if (markDirty) {
+    hasUnsavedChanges = true;
+    $("#save-status").textContent = "有未保存修改";
+  }
   clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(async () => {
     try {
       await saveDraft(clone(diagram), currentFilePath || "");
-      $("#save-status").textContent = currentFilePath ? "已自动保存视图" : "已保存到本地";
+      if (markDirty) $("#save-status").textContent = currentFilePath ? "草稿已保存，待写入项目" : "已保存到本地草稿";
     } catch {
       $("#save-status").textContent = "自动保存失败";
     }
@@ -2081,24 +2113,143 @@ function exportMermaid() {
 async function saveDiagram(saveAs = false) {
   syncGraphLayoutToDiagram();
   if (window.mindmapDesktop?.isDesktop) {
-    const result = saveAs || !currentFilePath
-      ? await window.mindmapDesktop.saveJsonAs({ suggestedName: currentFilePath ? currentFilePath.split(/[\\/]/).at(-1) : `${slug(diagram.title)}.diagram.json`, diagram })
+    const createProjectCopy = saveAs || !currentFilePath;
+    const result = createProjectCopy && window.mindmapDesktop.projects?.create
+      ? await window.mindmapDesktop.projects.create({ name: saveAs ? `${diagram.title} 副本` : diagram.title, diagram })
       : await window.mindmapDesktop.saveJson({ diagram });
     if (result?.ok) {
       currentFilePath = result.filePath;
+      hasUnsavedChanges = false;
       $("#save-status").textContent = "已保存";
       showToast(`已保存 ${result.filePath.split(/[\\/]/).at(-1)}`);
-    } else if (!result?.canceled) showError(result?.error || "保存失败");
-    return;
+      return true;
+    }
+    if (!result?.canceled) showError(result?.error || "保存失败");
+    return false;
   }
   exportJson();
+  hasUnsavedChanges = false;
   $("#save-status").textContent = "已下载 JSON";
+  return true;
+}
+
+function resolveUnsavedDecision(value) {
+  const resolve = unsavedDecisionResolve;
+  unsavedDecisionResolve = null;
+  const dialog = $("#unsaved-dialog");
+  if (dialog?.open) dialog.close();
+  resolve?.(value);
+}
+
+function confirmProjectSwitch() {
+  if (!hasUnsavedChanges) return Promise.resolve(true);
+  const dialog = $("#unsaved-dialog");
+  if (!dialog) return Promise.resolve(window.confirm("当前项目有未保存修改，继续将放弃这些修改。"));
+  if (unsavedDecisionResolve) return Promise.resolve(false);
+  dialog.showModal();
+  return new Promise((resolve) => { unsavedDecisionResolve = resolve; });
+}
+
+function closeProjectDialog() {
+  const dialog = $("#project-dialog");
+  if (dialog?.open) dialog.close();
+}
+
+function renderProjectList(projects = []) {
+  const list = $("#project-list");
+  if (!list) return;
+  const projectCount = $("#project-count");
+  if (projectCount) projectCount.textContent = `${projects.length} 个项目`;
+  const recent = $("#recent-project-menu");
+  if (recent) {
+    recent.innerHTML = projects.length
+      ? projects.slice(0, 4).map((project) => `<button type="button" data-project-file="${escapeHtml(project.fileName)}"><i data-lucide="file-text"></i><span>${escapeHtml(project.title || project.name || project.fileName)}</span></button>`).join("")
+      : '<div class="project-menu-empty"><i data-lucide="clock-3"></i><span>还没有最近打开的项目</span></div>';
+    refreshIcons(recent);
+  }
+  if (!projects.length) {
+    list.innerHTML = '<div class="project-list-empty"><span class="project-empty-icon"><i data-lucide="folder-plus"></i></span><strong>还没有本地项目</strong><span>新建后会保存在 App 根目录的 projects/ 中</span><button type="button" data-project-action="focus-name"><i data-lucide="plus"></i>新建空白项目</button></div>';
+    refreshIcons(list);
+    return;
+  }
+  list.innerHTML = projects.map((project) => {
+    const title = escapeHtml(project.title || project.name || project.fileName);
+    const fileName = escapeHtml(project.fileName);
+    const modified = project.modifiedAt ? new Date(project.modifiedAt).toLocaleString() : "";
+    return `<button type="button" class="project-list-item" data-project-file="${fileName}"><span><strong>${title}</strong><small>${fileName}</small></span><time>${escapeHtml(modified)}</time></button>`;
+  }).join("");
+}
+
+async function refreshProjectList() {
+  if (!window.mindmapDesktop?.projects?.list) {
+    renderProjectList([]);
+    return;
+  }
+  const result = await window.mindmapDesktop.projects.list();
+  if (!result?.ok) throw new Error(result?.error || "无法读取项目列表");
+  renderProjectList(result.projects || []);
+}
+
+async function openProjectDialog() {
+  if (!(await confirmProjectSwitch())) return;
+  const dialog = $("#project-dialog");
+  if (!dialog) return createNewProject();
+  $("#project-name").value = "";
+  dialog.showModal();
+  $("#project-name").focus();
+  try {
+    await refreshProjectList();
+  } catch (error) {
+    renderProjectList([]);
+    showError(error);
+  }
+}
+
+async function createNewProject(name) {
+  const requestedName = String(name ?? "").trim() || "未命名项目";
+  const blank = createBlankDiagram(requestedName);
+  document.documentElement.dataset.lastShortcut = "new-project";
+  if (window.mindmapDesktop?.projects?.create) {
+    const result = await window.mindmapDesktop.projects.create({ name: requestedName, diagram: blank });
+    if (!result?.ok) {
+      if (!result?.canceled) showError(result?.error || "新建项目失败");
+      return;
+    }
+    loadDiagram(result.diagram || blank, { filePath: result.filePath, fit: true });
+    closeProjectDialog();
+    showToast(`已创建 ${result.fileName || requestedName}`);
+    return;
+  }
+  loadDiagram(blank, { filePath: "", fit: true });
+  closeProjectDialog();
+  showToast("已新建空白项目，按 Ctrl/Cmd+S 下载保存");
+}
+
+async function openProjectFile(fileName) {
+  if (!(await confirmProjectSwitch())) return;
+  if (!window.mindmapDesktop?.projects?.open) return;
+  const result = await window.mindmapDesktop.projects.open({ fileName });
+  if (!result?.ok) {
+    showError(result?.error || "打开项目失败");
+    return;
+  }
+  loadDiagram(result.diagram, { filePath: result.filePath, fit: true });
+  closeProjectDialog();
+  showToast(`已打开 ${result.fileName || fileName}`);
 }
 
 async function openDiagram() {
+  if (!(await confirmProjectSwitch())) return;
   if (window.mindmapDesktop?.isDesktop) {
     const result = await window.mindmapDesktop.openJson();
-    if (result?.ok) return loadDiagram(result.diagram, { filePath: result.filePath, fit: true });
+    if (result?.ok) {
+      const imported = window.mindmapDesktop.projects?.create
+        ? await window.mindmapDesktop.projects.create({ name: result.diagram?.title || "导入项目", diagram: result.diagram })
+        : result;
+      if (imported?.ok) return loadDiagram(imported.diagram || result.diagram, { filePath: imported.filePath, fit: true });
+      showError(imported?.error || "导入项目失败");
+      return;
+    }
     if (!result?.canceled) showError(result?.error || "打开失败");
     return;
   }
@@ -2117,13 +2268,14 @@ function loadDiagram(input, options = {}) {
     const validated = assertValidDiagram(clone(input));
     diagram = ensureViews(validated);
     currentFilePath = options.filePath || "";
+    hasUnsavedChanges = false;
     history.clear();
     viewNavigation = [];
     renderGraph();
     clearError();
     updateHistoryButtons();
     requestAnimationFrame(() => options.fit === false ? restoreCamera(activeView().camera) : fitAll());
-    scheduleAutosave();
+    scheduleAutosave({ markDirty: false });
   } catch (error) {
     showError(error);
   }
@@ -2134,7 +2286,12 @@ async function loadDefault() {
     const stored = await migrateLegacyDraft(LAST_DIAGRAM_KEY, LAST_FILE_KEY);
     const draft = stored?.diagram ? stored : await loadDraft();
     if (draft?.diagram) {
-      loadDiagram(draft.diagram, { filePath: draft.filePath || "", fit: true });
+      let filePath = draft.filePath || "";
+      if (filePath && window.mindmapDesktop?.projects?.authorize) {
+        const authorization = await window.mindmapDesktop.projects.authorize({ filePath });
+        filePath = authorization?.ok ? authorization.filePath : "";
+      }
+      loadDiagram(draft.diagram, { filePath, fit: true });
       return;
     }
   } catch {
@@ -2148,6 +2305,7 @@ async function loadDefault() {
 function commandDefinitions() {
   return [
     ["选择工具", "V", () => setTool("select")], ["抓手工具", "H", () => setTool("pan")], ["连线工具", "C", () => setTool("connect")],
+    ["新建空白项目", "Ctrl/Cmd+N", openProjectDialog], ["打开本地项目", "", openProjectDialog],
     ["新建模块", "B", () => addManualNode("module")], ["新建便签", "N", () => addManualNode("note")], ["新建分组", "G", groupSelected],
     ["自动布局", "L", autoLayout], ["适应全部", "0", fitAll], ["适应选中", "Shift+0", fitSelection],
     ["保存", "Ctrl/Cmd+S", () => saveDiagram(false)], ["另存为", "Ctrl/Cmd+Shift+S", () => saveDiagram(true)], ["打开", "Ctrl/Cmd+O", openDiagram],
@@ -2241,6 +2399,44 @@ function bindDomEvents() {
   $("#undo").addEventListener("click", undo);
   $("#redo").addEventListener("click", redo);
   $("#open-file-button").addEventListener("click", openDiagram);
+  $("#new-project-button")?.addEventListener("click", () => {
+    $("#new-project-button").closest("details")?.removeAttribute("open");
+    openProjectDialog().catch(showError);
+  });
+  $("#projects-button")?.addEventListener("click", () => openProjectDialog().catch(showError));
+  $("#project-cancel")?.addEventListener("click", closeProjectDialog);
+  $("#unsaved-dialog")?.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    resolveUnsavedDecision(false);
+  });
+  for (const button of $$('[data-unsaved-choice]')) button.addEventListener("click", async () => {
+    const choice = button.dataset.unsavedChoice;
+    if (choice === "save") {
+      if (await saveDiagram(false)) resolveUnsavedDecision(true);
+      return;
+    }
+    if (choice === "discard") hasUnsavedChanges = false;
+    resolveUnsavedDecision(choice === "discard");
+  });
+  $("#project-form")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    createNewProject($("#project-name")?.value).catch(showError);
+  });
+  $("#project-list")?.addEventListener("click", (event) => {
+    if (event.target.closest('[data-project-action="focus-name"]')) {
+      $("#project-name")?.focus();
+      return;
+    }
+    const button = event.target.closest("[data-project-file]");
+    if (button) openProjectFile(button.dataset.projectFile).catch(showError);
+  });
+  $("#recent-project-menu")?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-project-file]");
+    if (button) {
+      button.closest("details")?.removeAttribute("open");
+      openProjectFile(button.dataset.projectFile).catch(showError);
+    }
+  });
   openFileInput.addEventListener("change", async () => {
     const file = openFileInput.files?.[0];
     if (!file) return;
@@ -2514,6 +2710,20 @@ function bindResizer(handle, property, min, max, direction) {
 function bindKeyboard() {
   window.addEventListener("keydown", (event) => {
     const typing = event.target.matches?.("input,textarea,select,[contenteditable=true]");
+    const key = event.key.toLowerCase();
+    const mod = event.ctrlKey || event.metaKey;
+    if (mod && key === "n") {
+      event.preventDefault();
+      document.documentElement.dataset.lastShortcut = "new-project-dialog";
+      inlineEditor?.commit("new-project");
+      return openProjectDialog().catch(showError);
+    }
+    if (mod && key === "s") {
+      event.preventDefault();
+      document.documentElement.dataset.lastShortcut = "save";
+      inlineEditor?.commit("save");
+      return saveDiagram(event.shiftKey);
+    }
     const isSpace = event.code === "Space" || event.key === " " || event.key === "Space" || event.key === "Spacebar" || event.keyCode === 32;
     if (isSpace && !typing) {
       event.preventDefault();
@@ -2523,12 +2733,9 @@ function bindKeyboard() {
       return;
     }
     if (typing) return;
-    const key = event.key.toLowerCase();
-    const mod = event.ctrlKey || event.metaKey;
     if (mod && key === "k") { event.preventDefault(); return openCommandPalette(); }
     if (mod && key === "f") { event.preventDefault(); searchInput.focus(); return; }
     if (mod && key === "o") { event.preventDefault(); return openDiagram(); }
-    if (mod && key === "s") { event.preventDefault(); return saveDiagram(event.shiftKey); }
     if (mod && key === "z") { event.preventDefault(); return event.shiftKey ? redo() : undo(); }
     if (mod && key === "y") { event.preventDefault(); return redo(); }
     if (mod && key === "c") { document.documentElement.dataset.lastShortcut = "copy"; copySelection(); return; }

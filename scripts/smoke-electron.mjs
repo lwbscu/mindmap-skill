@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -11,6 +12,8 @@ const root = path.resolve(__dirname, "..");
 const mainPath = path.join(root, "desktop", "main.mjs");
 const require = createRequire(import.meta.url);
 const electron = require("electron");
+const smokeSandbox = await fs.mkdtemp(path.join(os.tmpdir(), "mindmap-electron-smoke-"));
+const smokeProjectsDir = path.join(smokeSandbox, "projects");
 const mainSource = await fs.readFile(mainPath, "utf8");
 assert.ok(mainSource.includes('["https:", "http:", "mailto:"].includes(parsed.protocol)'), "external URL policy must only allow http/https/mailto");
 assert.ok(mainSource.includes("openExternalSafely(url);"), "external links must pass through allowlist helper");
@@ -40,7 +43,7 @@ assert.equal(hasServeApp(before), false, "serve-app is already running before El
 const child = spawn(electron, [mainPath, "--smoke"], {
   cwd: root,
   env: (() => {
-    const env = { ...process.env, MINDMAP_ELECTRON_SMOKE: "1" };
+    const env = { ...process.env, MINDMAP_ELECTRON_SMOKE: "1", MINDMAP_PROJECTS_DIR: smokeProjectsDir };
     delete env.ELECTRON_RUN_AS_NODE;
     return env;
   })(),
@@ -103,10 +106,26 @@ assert.equal(result.spacePanMoved, true);
 assert.equal(result.connectionCreated, true);
 assert.equal(result.connectionUndoRestored, true);
 assert.equal(result.dependencyViewActive, true);
+assert.equal(result.unsavedGuardShown, true, "switching a dirty project must show the unsaved-changes guard");
+assert.equal(result.newProjectCommandSeen, true, "Ctrl/Cmd+N must invoke the project dialog command");
+assert.equal(result.projectDialogOpened, true, "Ctrl/Cmd+N must open the project dialog");
+assert.equal(result.projectDialogMetrics?.withinViewport, true, "project dialog must stay inside the viewport");
+assert.ok(result.projectDialogFocusState?.shellOpacity <= 0.2, "project dialog must visually quiet the canvas behind it");
+assert.match(result.projectDialogFocusState?.shellFilter || "", /blur\(/, "project dialog must soften the canvas behind it");
+assert.equal(result.newProjectShortcutSeen, true, "Ctrl/Cmd+N must invoke the blank-project command");
+assert.equal(result.blankProjectCreated, true, "Ctrl/Cmd+N must create a blank diagram");
+assert.equal(result.blankProjectNodeCount, 0, "a new blank project must contain no nodes");
+assert.equal(result.blankProjectEdgeCount, 0, "a new blank project must contain no edges");
+assert.equal(result.saveShortcutSeen, true, "Ctrl/Cmd+S must invoke the project save command");
+assert.equal(result.projectSaved, true, "Ctrl/Cmd+S must persist the current blank project");
+assert.equal(result.projectFileExists, true, "the saved project file must exist");
+assert.match(result.projectFilePath, /[\\/]projects[\\/][^\\/]+\.diagram\.json$/);
 assert.ok(result.zoomValue > 0, "zoom control should report a numeric value");
 await fs.access(result.screenshotPath);
+await fs.access(result.projectDialogScreenshotPath);
 
 const after = await processList();
 assert.equal(hasServeApp(after), false, "Electron smoke must not start serve-app");
+await fs.rm(smokeSandbox, { recursive: true, force: true });
 
 console.log(JSON.stringify({ ok: true, result }, null, 2));

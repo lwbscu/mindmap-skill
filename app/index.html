@@ -57,7 +57,20 @@
         <kbd>⌘F</kbd>
       </label>
 
-      <button id="open-file-button" class="icon-button" type="button" title="打开 diagram JSON" aria-label="打开"><i data-lucide="folder-open"></i></button>
+      <details class="project-menu compact-menu">
+        <summary class="icon-button" title="项目" aria-label="打开项目菜单"><i data-lucide="folder-open"></i></summary>
+        <div class="menu-panel menu-panel-right project-menu-panel">
+          <button id="new-project-button" type="button"><i data-lucide="file-plus-2"></i>新建空白项目 <kbd>Ctrl N</kbd></button>
+          <button id="projects-button" type="button"><i data-lucide="folder-tree"></i>最近 / 本地项目</button>
+          <button id="open-file-button" type="button"><i data-lucide="file-input"></i>导入 Diagram JSON</button>
+          <hr>
+          <div class="menu-section-label">最近项目</div>
+          <div id="recent-project-menu" class="project-menu-list" aria-live="polite">
+            <div class="project-menu-empty"><i data-lucide="clock-3"></i><span>还没有最近打开的项目</span></div>
+          </div>
+          <div class="project-root-hint" title="项目保存在 App 根目录的 projects 文件夹"><i data-lucide="hard-drive"></i><span>projects/</span></div>
+        </div>
+      </details>
       <input id="open-file" type="file" accept="application/json,.json" hidden>
       <input id="image-file" type="file" accept="image/png,image/jpeg,image/webp" hidden>
       <details class="export-menu compact-menu">
@@ -222,6 +235,49 @@
   <dialog id="command-palette" class="command-palette">
     <label><i data-lucide="search"></i><input id="command-search" placeholder="输入命令…" autocomplete="off"></label>
     <div id="command-list" class="command-list"></div>
+  </dialog>
+
+  <dialog id="project-dialog" class="project-library-dialog" aria-labelledby="project-dialog-title">
+    <div class="project-library-header">
+      <div>
+        <strong id="project-dialog-title">新建或打开项目</strong>
+        <span>保存在 App 根目录的 projects 文件夹</span>
+      </div>
+      <button id="project-cancel" class="icon-button" type="button" title="取消" aria-label="取消并关闭项目窗口"><i data-lucide="x"></i></button>
+    </div>
+    <form id="project-form" class="project-library-tools">
+      <label class="project-name-field">
+        <i data-lucide="file-plus-2" aria-hidden="true"></i>
+        <span class="sr-only">项目名称</span>
+        <input id="project-name" type="text" name="projectName" maxlength="80" placeholder="输入空白项目名称" autocomplete="off" required>
+      </label>
+      <button class="project-primary-button" type="submit"><i data-lucide="plus"></i>新建项目</button>
+    </form>
+    <div id="project-list" class="project-list" role="list" aria-live="polite">
+      <div id="project-list-empty" class="project-list-empty">
+        <span class="project-empty-icon"><i data-lucide="folder-plus"></i></span>
+        <strong>还没有本地项目</strong>
+        <span>创建空白项目后会自动出现在这里</span>
+        <button type="button" data-project-action="focus-name"><i data-lucide="plus"></i>新建空白项目</button>
+      </div>
+    </div>
+    <footer class="project-library-footer">
+      <span><i data-lucide="hard-drive"></i>projects/</span>
+      <span id="project-count">0 个项目</span>
+    </footer>
+  </dialog>
+
+  <dialog id="unsaved-dialog" class="unsaved-dialog" aria-labelledby="unsaved-dialog-title">
+    <div class="unsaved-dialog-icon"><i data-lucide="triangle-alert"></i></div>
+    <div class="unsaved-dialog-copy">
+      <strong id="unsaved-dialog-title">保存当前修改？</strong>
+      <p>切换项目会关闭当前画布。你可以先保存到 projects/，也可以放弃本次修改。</p>
+    </div>
+    <div class="unsaved-dialog-actions">
+      <button type="button" data-unsaved-choice="cancel">取消</button>
+      <button type="button" class="danger-button" data-unsaved-choice="discard">放弃修改</button>
+      <button type="button" class="primary-button" data-unsaved-choice="save"><i data-lucide="save"></i>保存并继续</button>
+    </div>
   </dialog>
 
   <div id="context-menu" class="context-menu" hidden></div>
