@@ -19,7 +19,7 @@ Use this skill for architecture diagrams of models, systems, repositories, servi
 - Prefer stable architecture roles over decorative categories: `entrypoint`, `interface`, `module`, `service`, `model`, `data`, `storage`, `process`, `external`, `risk`, `unknown`.
 - Use status tags when they help review state: `implemented`, `external`, `planned`, `unknown`, `risk`. Put visible labels such as `拟介入` or `待确认` in node text when the exported map needs to show them.
 - Keep the diagram easy to scan: 5-15 primary nodes first, short labels, large text, and explicit arrows that do not cover text.
-- Use the MindMap app artifact by default: diagram JSON plus Electron desktop preview, three shared-data views, marquee/lasso multi-select, relation creation, searchable nodes/edges, node/layer navigation, property/evidence inspection, auto-layout, and SVG/PNG/PDF/JSON/HTML/Mermaid export.
+- Use the MindMap app artifact by default: diagram JSON plus Electron desktop preview, three shared-data views, in-place text editing, XMind-style `Tab`/`Enter` topic creation, floating multi-node typography/color controls, marquee/lasso selection, relation creation, searchable nodes/edges, auto-layout, and SVG/PNG/PDF/JSON/HTML/Mermaid export.
 - Never require a local notes directory for normal MindMap work.
 
 ## Required References
@@ -93,7 +93,7 @@ npm run app:render -- examples/<name>.diagram.json
 npm run app:build
 ```
 
-Open the Electron desktop window for interactive review. It uses the `mindmap://` local protocol rather than a `127.0.0.1` server. Use **打开**, the MindMap/dependency/architecture switcher, top search, node/layer navigator, minimap, detail/relation/evidence inspector, marquee or lasso multi-select, group dragging, port relation tool, pointer-centered zoom, keyboard copy/paste/undo, and ELK auto-layout to inspect or adjust the diagram. Export the current view as SVG, PNG, PDF, JSON, standalone HTML, or Mermaid when a portable artifact is needed.
+Open the Electron desktop window for interactive review. It uses the `mindmap://` local protocol rather than a `127.0.0.1` server. Double-click a node or press `F2` to edit title and description directly. Use the floating toolbar for quick font size, bold, alignment, text/fill/border color changes, and the inspector for full style control. In MindMap view, `Tab` creates a child and `Enter` creates a sibling. Also use **打开**, the three-view switcher, search, navigator, minimap, marquee/lasso multi-select, group dragging, port relation tool, pointer-centered zoom, copy/paste/undo, and automatic layout. Export the current view as SVG, PNG, PDF, JSON, standalone HTML, or Mermaid when a portable artifact is needed.
 
 ### 5. Validate
 

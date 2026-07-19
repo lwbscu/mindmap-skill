@@ -42,13 +42,15 @@ for (const [width, height] of sizes) {
   assert.equal(result.ok, true);
   assert.equal(result.nodes, 15);
   assert.equal(result.edges, 18);
+  assert.equal(result.renderedNodes, result.nodes, `${width}x${height} did not render every semantic node`);
   assert.equal(result.topbarOverflow, false, `${width}x${height} topbar overflowed`);
   assert.equal(result.statusbarOverflow, false, `${width}x${height} statusbar overflowed`);
   assert.ok(result.layerBounds, `${width}x${height} did not render layer bounds`);
-  assert.ok(result.layerBounds.left >= result.graphRect.left - 2, `${width}x${height} content escaped left`);
-  assert.ok(result.layerBounds.right <= result.graphRect.right + 2, `${width}x${height} content escaped right`);
-  assert.ok(result.layerBounds.top >= result.graphRect.top - 2, `${width}x${height} content escaped top`);
-  assert.ok(result.layerBounds.bottom <= result.graphRect.bottom + 2, `${width}x${height} content escaped bottom`);
+  assert.ok(result.layerBounds.right >= result.graphRect.left && result.layerBounds.left <= result.graphRect.right, `${width}x${height} content is outside the horizontal viewport`);
+  assert.ok(result.layerBounds.bottom >= result.graphRect.top && result.layerBounds.top <= result.graphRect.bottom, `${width}x${height} content is outside the vertical viewport`);
+  assert.ok(result.zoom >= (width <= 620 ? 42 : 55), `${width}x${height} fit zoom is too small to read`);
+  assert.ok(Number(result.sampleTypography?.fontSize) >= 18, `${width}x${height} node title is too small`);
+  assert.equal(result.sampleTypography?.transform, null, `${width}x${height} inherited text transform shifted card copy`);
   await fs.access(result.screenshotPath);
   results.push({ requested: `${width}x${height}`, ...result });
 }

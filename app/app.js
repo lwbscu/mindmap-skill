@@ -9,12 +9,12 @@ import { Scroller } from "@antv/x6-plugin-scroller";
 import { Export } from "@antv/x6-plugin-export";
 import { Transform } from "@antv/x6-plugin-transform";
 import {
-  AlignHorizontalDistributeCenter, AlignLeft, AlignStartHorizontal, Braces,
+  AlignCenter, AlignHorizontalDistributeCenter, AlignLeft, AlignRight, AlignStartHorizontal, Braces,
   ChevronDown, CircleAlert, CircleCheck, CircleDot, ClipboardCopy, Cloud,
   createIcons, Download, EyeOff, FileCode2, FileImage, FileText, Focus,
   FolderOpen, GitBranch, Grid3X3, Group, Hand, Image as ImageIcon, Minus,
   MousePointer2, Network, PanelLeft, PanelRight, Plus, Redo2, Scan, Search,
-  Square, StickyNote, Trash2, Undo2, WandSparkles, Workflow, X,
+  Square, StickyNote, Trash2, Undo2, WandSparkles, Workflow, X, Pencil,
 } from "lucide";
 
 import "@antv/x6/dist/index.css";
@@ -27,21 +27,27 @@ import { assertValidDiagram, validateDiagram } from "./diagram-validator.mjs";
 import { renderStandaloneHtml, renderSvg } from "./render-svg.mjs";
 import { command, createCommandHistory } from "./editor/command-history.mjs";
 import { copySubgraph, pasteSubgraph } from "./editor/clipboard.mjs";
+import { createInlineEditor } from "./editor/inline-editing.mjs";
 import { createInteractionStateMachine, InteractionState } from "./editor/interaction-state.mjs";
 import { boundsForItems, isSignificantDrag, selectByMarquee } from "./editor/selection-geometry.mjs";
+import { getCommonNodeStyle, normalizeNodeStyle } from "./editor/style-model.mjs";
 import { activate, capture, ensureViews, stableEdgeId } from "./views/view-model.mjs";
 import { filterDependencies, shortestPath } from "./views/graph-query.mjs";
-import { layoutWithElk } from "./views/layout-profiles.mjs";
+import { fallbackLayout, layoutWithElk } from "./views/layout-profiles.mjs";
 import { resolveView } from "./views/view-resolver.mjs";
 
 const DEFAULT_DIAGRAM_URL = "../examples/rpent-libero-behavior.diagram.json";
 const GRID_SIZE = 8;
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 4;
+const READABLE_FIT_ZOOM = 0.55;
 const ZOOM_STEP = 1.15;
 const AUTO_SAVE_DELAY = 500;
-const CARD_WIDTH = 224;
-const CARD_HEIGHT = 78;
+const LOCAL_STORAGE_VERSION = "v2";
+const LAST_DIAGRAM_KEY = `mindmap:last-diagram:${LOCAL_STORAGE_VERSION}`;
+const LAST_FILE_KEY = `mindmap:last-file:${LOCAL_STORAGE_VERSION}`;
+const CARD_WIDTH = 320;
+const CARD_HEIGHT = 96;
 const GROUP_WIDTH = 440;
 const GROUP_HEIGHT = 260;
 
@@ -88,17 +94,18 @@ let marqueeState = null;
 let lassoState = null;
 let viewNavigation = [];
 let selectedBeforeViewSwitch = [];
+let inlineEditor = null;
 
 const history = createCommandHistory({ limit: 100 });
 const interaction = createInteractionStateMachine();
 
 const lucideIcons = {
-  AlignHorizontalDistributeCenter, AlignLeft, AlignStartHorizontal, Braces,
+  AlignCenter, AlignHorizontalDistributeCenter, AlignLeft, AlignRight, AlignStartHorizontal, Braces,
   ChevronDown, CircleAlert, CircleCheck, CircleDot, ClipboardCopy, Cloud,
   Download, EyeOff, FileCode2, FileImage, FileText, Focus, FolderOpen,
   GitBranch, Grid3x3: Grid3X3, Group, Hand, Image: ImageIcon, Minus,
   MousePointer2, Network, PanelLeft, PanelRight, Plus, Redo2, Scan, Search,
-  Square, StickyNote, Trash2, Undo2, WandSparkles, Workflow, X,
+  Square, StickyNote, Trash2, Undo2, WandSparkles, Workflow, X, Pencil,
 };
 
 const statusLabels = {
@@ -197,15 +204,16 @@ function registerShapes() {
       { tagName: "text", selector: "relationCount" },
     ],
     attrs: {
-      body: { refWidth: "100%", refHeight: "100%", rx: 6, ry: 6, fill: "#ffffff", stroke: "#cbd5e1", strokeWidth: 1 },
-      accent: { width: 4, refHeight: "100%", rx: 3, ry: 3, fill: "#2563eb", stroke: "none" },
-      badgeBody: { x: 12, y: 17, width: 34, height: 34, rx: 6, ry: 6, fill: "#eaf1ff", stroke: "none" },
-      badgeText: { x: 29, y: 34, fontSize: 8, fontWeight: 800, textAnchor: "middle", textVerticalAnchor: "middle", fill: "#2456b8" },
-      title: { x: 56, y: 20, fontSize: 15, fontWeight: 750, fill: "#172033", textAnchor: "start", textVerticalAnchor: "middle" },
-      subtitle: { x: 56, y: 39, fontSize: 11, fill: "#667085", textAnchor: "start", textVerticalAnchor: "middle" },
-      statusBody: { x: 56, y: 52, width: 42, height: 15, rx: 3, ry: 3, fill: "#e7f8f1", stroke: "none" },
-      statusText: { x: 77, y: 60, fontSize: 8, fontWeight: 750, fill: "#087a5a", textAnchor: "middle", textVerticalAnchor: "middle" },
-      relationCount: { x: 210, y: 60, fontSize: 9, fill: "#8893a3", textAnchor: "end", textVerticalAnchor: "middle" },
+      text: { refX: null, refY: null },
+      body: { refWidth: "100%", refHeight: "100%", rx: 8, ry: 8, fill: "#ffffff", stroke: "#c8d3e1", strokeWidth: 1.2 },
+      accent: { width: 5, refHeight: "100%", rx: 4, ry: 4, fill: "#2563eb", stroke: "none" },
+      badgeBody: { x: 14, y: 20, width: 36, height: 36, rx: 7, ry: 7, fill: "#eaf1ff", stroke: "none" },
+      badgeText: { x: 32, y: 38, fontSize: 9, fontWeight: 800, textAnchor: "middle", textVerticalAnchor: "middle", fill: "#2456b8" },
+      title: { x: 62, y: 27, fontSize: 20, fontWeight: 700, fill: "#172033", textAnchor: "start", textVerticalAnchor: "middle" },
+      subtitle: { x: 62, y: 52, fontSize: 13, fill: "#667085", textAnchor: "start", textVerticalAnchor: "middle" },
+      statusBody: { x: 62, y: 69, width: 46, height: 17, rx: 4, ry: 4, fill: "#e7f8f1", stroke: "none" },
+      statusText: { x: 85, y: 78, fontSize: 9, fontWeight: 750, fill: "#087a5a", textAnchor: "middle", textVerticalAnchor: "middle" },
+      relationCount: { x: 304, y: 78, fontSize: 10, fill: "#8792a2", textAnchor: "end", textVerticalAnchor: "middle" },
     },
     ports: {
       groups: {
@@ -249,7 +257,7 @@ function initGraph() {
   graph = new Graph({
     container: graphContainer,
     autoResize: true,
-    virtual: true,
+    virtual: false,
     background: { color: "#ffffff" },
     grid: { visible: true, size: GRID_SIZE, type: "dot", args: { color: "#c8d5e5", thickness: 1 } },
     interacting(cellView) {
@@ -317,8 +325,8 @@ function relationCount(nodeId, blueprint = activeBlueprint()) {
 
 function x6NodeConfig(node, blueprint) {
   const visual = visualFor(node);
-  const width = clamp(Number(node.width || CARD_WIDTH), node.kind === "group" ? 280 : 140, 1400);
-  const height = clamp(Number(node.height || CARD_HEIGHT), node.kind === "group" ? 160 : 52, 900);
+  const width = clamp(Number(node.width || CARD_WIDTH), node.kind === "group" ? 280 : 240, 1400);
+  const height = clamp(Number(node.height || CARD_HEIGHT), node.kind === "group" ? 160 : 76, 900);
   if (node.kind === "group") {
     return {
       id: node.id,
@@ -328,16 +336,21 @@ function x6NodeConfig(node, blueprint) {
       width,
       height,
       zIndex: 2,
-      attrs: { body: { fill: node.fill || "#f8fafc", stroke: node.stroke || "#8593a7" }, label: { text: node.title || "分组" } },
+      attrs: { body: { fill: node.fill || "#f8fafc", stroke: node.stroke || "#8593a7", rx: Number(node.borderRadius ?? 8), ry: Number(node.borderRadius ?? 8) }, label: { text: node.title || "分组", fill: node.textColor || "#425066", fontSize: clamp(Number(node.titleSize || 16), 12, 36), fontWeight: Number(node.fontWeight || 700) } },
       data: { type: "node", nodeId: node.id, node: clone(node), locked: Boolean(node.locked), group: true },
     };
   }
   const status = statusLabels[node.status] || statusLabels.implemented;
   const statusWidth = Math.max(38, status.length * 10 + 9);
-  const titleSize = clamp(Number(node.titleSize || 15), 11, 24);
-  const subtitleSize = clamp(Number(node.subtitleSize || 11), 9, 18);
+  const titleSize = clamp(Number(node.titleSize || 20), 14, 36);
+  const subtitleSize = clamp(Number(node.subtitleSize || 13), 10, 22);
   const titleLength = Math.max(8, Math.floor((width - 72) / Math.max(6, titleSize * .58)));
   const subtitleLength = Math.max(10, Math.floor((width - 72) / Math.max(5, subtitleSize * .54)));
+  const textAlign = ["left", "center", "right"].includes(node.textAlign) ? node.textAlign : "left";
+  const textAnchor = textAlign === "center" ? "middle" : textAlign === "right" ? "end" : "start";
+  const textX = textAlign === "center" ? width / 2 : textAlign === "right" ? width - 18 : 62;
+  const statusY = height - 18;
+  const textPosition = (x, y) => ({ x, y });
   return {
     id: node.id,
     shape: "mindmap-card",
@@ -347,15 +360,15 @@ function x6NodeConfig(node, blueprint) {
     height,
     zIndex: 10,
     attrs: {
-      body: { fill: node.fill || "#ffffff", stroke: node.stroke || "#cbd5e1", strokeWidth: Number(node.strokeWidth || 1) },
+      body: { fill: node.fill || "#ffffff", stroke: node.stroke || "#cbd5e1", strokeWidth: Number(node.strokeWidth || 1.2), rx: Number(node.borderRadius ?? 8), ry: Number(node.borderRadius ?? 8) },
       accent: { fill: node.stroke || visual.accent },
       badgeBody: { fill: visual.badgeFill },
-      badgeText: { text: visual.badge, fill: visual.badgeText },
-      title: { text: truncateText(node.title || "未命名", titleLength), fill: node.textColor || "#172033", fontSize: titleSize },
-      subtitle: { text: truncateText(node.subtitle || "未填写说明", subtitleLength), fill: node.subtitleColor || "#667085", fontSize: subtitleSize },
-      statusBody: { width: statusWidth, fill: node.status === "risk" ? "#ffe8ed" : node.status === "unknown" ? "#fff1d5" : "#e7f8f1" },
-      statusText: { x: 56 + statusWidth / 2, text: status, fill: node.status === "risk" ? "#b52d4b" : node.status === "unknown" ? "#a56800" : "#087a5a" },
-      relationCount: { x: width - 14, text: `${relationCount(node.id, blueprint)} 条关系` },
+      badgeText: { ...textPosition(32, 38), text: visual.badge, fill: visual.badgeText },
+      title: { ...textPosition(textX, 28), textAnchor, text: truncateText(node.title || "未命名", titleLength), fill: node.textColor || "#172033", fontSize: titleSize, fontWeight: Number(node.fontWeight || 700) },
+      subtitle: { ...textPosition(textX, 54), textAnchor, text: truncateText(node.subtitle || "未填写说明", subtitleLength), fill: node.subtitleColor || "#667085", fontSize: subtitleSize },
+      statusBody: { y: statusY - 9, width: statusWidth, fill: node.status === "risk" ? "#ffe8ed" : node.status === "unknown" ? "#fff1d5" : "#e7f8f1" },
+      statusText: { ...textPosition(62 + statusWidth / 2, statusY), text: status, fill: node.status === "risk" ? "#b52d4b" : node.status === "unknown" ? "#a56800" : "#087a5a" },
+      relationCount: { ...textPosition(width - 14, statusY), text: `${relationCount(node.id, blueprint)} 条关系` },
     },
     data: { type: "node", nodeId: node.id, node: clone(node), locked: Boolean(node.locked), manual: Boolean(node.manual) },
   };
@@ -505,6 +518,109 @@ function semanticEdge(id) {
   return diagram.edges.find((edge, index) => stableEdgeId(edge, index) === id);
 }
 
+function semanticStyle(node) {
+  return normalizeNodeStyle({
+    fontSize: Number(node?.titleSize || 20),
+    fontWeight: Number(node?.fontWeight || 700),
+    textColor: node?.textColor || "#172033",
+    fill: node?.fill || "#ffffff",
+    borderColor: node?.stroke || visualFor(node || {}).accent,
+    borderWidth: Number(node?.strokeWidth || 1.2),
+    textAlign: node?.textAlign || "left",
+    borderRadius: Number(node?.borderRadius ?? 8),
+  });
+}
+
+function commonSelectedStyle() {
+  const nodes = selectedSemanticNodeIds().map(semanticNode).filter(Boolean);
+  return nodes.length ? getCommonNodeStyle(nodes.map(semanticStyle), { mixedValue: null }) : null;
+}
+
+function estimateTextWidth(value, fontSize) {
+  return [...String(value || "")].reduce((sum, character) => sum + (/[^\x00-\xff]/.test(character) ? fontSize : fontSize * .58), 0);
+}
+
+function preferredEditedNodeSize(node, values) {
+  const titleSize = clamp(Number(node.titleSize || 20), 14, 36);
+  const subtitleSize = clamp(Number(node.subtitleSize || 13), 10, 22);
+  const titleWidth = estimateTextWidth(values.title, titleSize);
+  const subtitleWidth = estimateTextWidth(values.subtitle, subtitleSize);
+  const width = Math.round(clamp(Math.max(CARD_WIDTH, titleWidth + 104, subtitleWidth + 104), 280, 620) / GRID_SIZE) * GRID_SIZE;
+  const subtitleLines = Math.max(1, String(values.subtitle || "").split("\n").length);
+  const height = Math.round(clamp(CARD_HEIGHT + Math.max(0, subtitleLines - 1) * (subtitleSize + 4), CARD_HEIGHT, 176) / GRID_SIZE) * GRID_SIZE;
+  return { width, height };
+}
+
+function applySelectedNodeStyle(stylePatch, label = "修改节点样式") {
+  const ids = selectedSemanticNodeIds();
+  if (!ids.length) return;
+  const normalized = normalizeNodeStyle(stylePatch, { partial: true });
+  runMutation(label, (next) => {
+    for (const node of next.nodes) {
+      if (!ids.includes(node.id)) continue;
+      if (normalized.fontSize !== undefined) node.titleSize = normalized.fontSize;
+      if (normalized.fontWeight !== undefined) node.fontWeight = normalized.fontWeight;
+      if (normalized.textColor !== undefined) node.textColor = normalized.textColor;
+      if (normalized.fill !== undefined) node.fill = normalized.fill;
+      if (normalized.borderColor !== undefined) node.stroke = normalized.borderColor;
+      if (normalized.borderWidth !== undefined) node.strokeWidth = normalized.borderWidth;
+      if (normalized.textAlign !== undefined) node.textAlign = normalized.textAlign;
+      if (normalized.borderRadius !== undefined) node.borderRadius = normalized.borderRadius;
+      if (normalized.fontSize !== undefined) {
+        const size = preferredEditedNodeSize(node, { title: node.title, subtitle: node.subtitle });
+        Object.assign(node, size);
+        const view = next.views.find((item) => item.id === next.activeViewId);
+        view.layout.nodes[node.id] = { ...(view.layout.nodes[node.id] || {}), ...size };
+      }
+    }
+  }, { selectionIds: ids });
+}
+
+function inlineContext(nodeId) {
+  const node = semanticNode(nodeId);
+  const cell = graph?.getCellById(nodeId);
+  const view = cell ? graph.findViewByCell(cell) : null;
+  const anchorRect = view?.container?.getBoundingClientRect?.();
+  if (!node || !cell || !anchorRect) return null;
+  return { id: nodeId, nodeId, node, values: { title: node.title || "未命名", subtitle: node.subtitle || "" }, anchorRect };
+}
+
+function beginNodeEdit(nodeId, options = {}) {
+  const context = inlineContext(nodeId);
+  if (!context || !inlineEditor) return false;
+  setTool("select");
+  selectNode(nodeId);
+  inlineEditor.begin(context, { field: options.field || "title", selection: options.selection || "all" });
+  return true;
+}
+
+function initInlineEditing() {
+  const inertEventTarget = new EventTarget();
+  inlineEditor = createInlineEditor({
+    root: document.body,
+    eventTarget: inertEventTarget,
+    getAnchorRect: (context) => context.anchorRect,
+    getViewportRect: () => graphShell.getBoundingClientRect(),
+    placement: { minWidth: 320, maxWidth: 620, minHeight: 108 },
+    transformDraft: (draft) => ({ ...draft, title: String(draft.title || "").replace(/\s*\n\s*/g, " ") }),
+    shouldStartFromKeyboard: () => false,
+    onActiveChange: (active) => appShell.classList.toggle("is-inline-editing", active),
+    onCommit: ({ id, values, changed }) => {
+      if (!changed) return;
+      runMutation("编辑主题文字", (next) => {
+        const node = next.nodes.find((item) => item.id === id);
+        if (!node) return;
+        node.title = values.title;
+        node.subtitle = values.subtitle;
+        const size = preferredEditedNodeSize(node, values);
+        Object.assign(node, size);
+        const view = next.views.find((item) => item.id === next.activeViewId);
+        view.layout.nodes[id] = { ...(view.layout.nodes[id] || {}), ...size };
+      }, { selectionIds: [id] });
+    },
+  });
+}
+
 function currentViewIndex() {
   return diagram.views.findIndex((view) => view.id === diagram.activeViewId);
 }
@@ -613,8 +729,8 @@ function scheduleAutosave() {
   clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(() => {
     try {
-      localStorage.setItem("mindmap:last-diagram", JSON.stringify(diagram));
-      localStorage.setItem("mindmap:last-file", currentFilePath || "");
+      localStorage.setItem(LAST_DIAGRAM_KEY, JSON.stringify(diagram));
+      localStorage.setItem(LAST_FILE_KEY, currentFilePath || "");
       $("#save-status").textContent = currentFilePath ? "已自动保存视图" : "已保存到本地";
     } catch {
       $("#save-status").textContent = "自动保存失败";
@@ -738,7 +854,7 @@ function renderViewInspector() {
   if (view.type === "dependency") {
     modeControls = `<section class="inspector-section"><h3>依赖探索</h3>${field("方向", "view:direction", view.filters?.direction || "both", { type: "select", items: [["inbound","入站"],["outbound","出站"],["both","双向"]] })}${field("深度", "view:depth", view.filters?.depth || 2, { type: "number" })}<div class="inspector-actions"><button type="button" data-view-action="shortest-path">显示所选最短路径</button><button type="button" data-view-action="clear-filter">清除聚焦</button></div></section>`;
   } else if (view.type === "mindmap") {
-    modeControls = `<section class="inspector-section"><h3>MindMap 布局</h3>${field("布局", "view:layout", view.modeOptions?.layout || "radial", { type: "select", items: [["radial","环形"],["right","向右"],["left","向左"],["both","左右双向"]] })}<div class="inspector-actions"><button type="button" data-view-action="set-root">将所选设为根节点</button><button type="button" data-view-action="focus-branch">只看当前分支</button></div></section>`;
+    modeControls = `<section class="inspector-section"><h3>MindMap 布局</h3>${field("布局", "view:layout", view.modeOptions?.layout || "both", { type: "select", items: [["both","左右双向"],["right","向右"],["left","向左"],["radial","环形"]] })}<div class="inspector-actions"><button type="button" data-view-action="set-root">将所选设为根节点</button><button type="button" data-view-action="focus-branch">只看当前分支</button></div></section>`;
   } else {
     modeControls = `<section class="inspector-section"><h3>架构布局</h3>${field("布局模式", "view:layout", view.modeOptions?.layout || "layered", { type: "select", items: [["layered","分层"],["domain","领域"],["service","服务"],["deployment","部署"],["custom","自定义"]] })}<div class="inspector-actions"><button type="button" data-view-action="reset-drilldown">返回系统全景</button></div></section>`;
   }
@@ -765,7 +881,7 @@ function renderNodeInspector(nodes) {
     return;
   }
   if (activeInspectorTab === "style") {
-    inspectorContent.innerHTML = `<section class="inspector-section"><h3>${nodes.length > 1 ? "批量样式" : "节点样式"}</h3><div class="field-row">${field("填充", "fill", primary.fill || "#ffffff", { type: "color", nodeId: primary.id })}${field("边框", "stroke", primary.stroke || visualFor(primary).accent, { type: "color", nodeId: primary.id })}</div><div class="field-row">${field("标题字号", "titleSize", primary.titleSize || 15, { type: "number", nodeId: primary.id })}${field("说明字号", "subtitleSize", primary.subtitleSize || 11, { type: "number", nodeId: primary.id })}</div><label class="toggle-row"><span>锁定位置</span><input type="checkbox" data-node-field="locked" data-node-id="${primary.id}"${primary.locked ? " checked" : ""}></label><div class="inspector-actions"><button type="button" data-node-action="duplicate">复制</button><button type="button" data-node-action="hide">从视图隐藏</button><button class="danger-button" type="button" data-node-action="delete">删除</button></div></section>`;
+    inspectorContent.innerHTML = `<section class="inspector-section"><h3>${nodes.length > 1 ? "批量格式" : "主题格式"}</h3><div class="style-presets"><button type="button" data-style-preset="blue"><span style="background:#eaf2ff;border-color:#4b7bec"></span>蓝色</button><button type="button" data-style-preset="green"><span style="background:#e8f8f1;border-color:#179b72"></span>绿色</button><button type="button" data-style-preset="yellow"><span style="background:#fff7d6;border-color:#e2a018"></span>黄色</button><button type="button" data-style-preset="plain"><span style="background:#fff;border-color:#667085"></span>简洁</button></div><div class="field-row">${field("标题字号", "titleSize", primary.titleSize || 20, { type: "number", nodeId: primary.id })}${field("说明字号", "subtitleSize", primary.subtitleSize || 13, { type: "number", nodeId: primary.id })}</div><div class="field-row">${field("字重", "fontWeight", primary.fontWeight || 700, { type: "select", nodeId: primary.id, items: [[400,"常规"],[500,"中等"],[600,"半粗"],[700,"粗体"],[800,"特粗"]] })}${field("对齐", "textAlign", primary.textAlign || "left", { type: "select", nodeId: primary.id, items: [["left","左对齐"],["center","居中"],["right","右对齐"]] })}</div><div class="field-row">${field("文字颜色", "textColor", primary.textColor || "#172033", { type: "color", nodeId: primary.id })}${field("说明颜色", "subtitleColor", primary.subtitleColor || "#667085", { type: "color", nodeId: primary.id })}</div><div class="field-row">${field("填充颜色", "fill", primary.fill || "#ffffff", { type: "color", nodeId: primary.id })}${field("边框颜色", "stroke", primary.stroke || visualFor(primary).accent, { type: "color", nodeId: primary.id })}</div><div class="field-row">${field("边框宽度", "strokeWidth", primary.strokeWidth || 1.2, { type: "number", nodeId: primary.id })}${field("圆角", "borderRadius", primary.borderRadius ?? 8, { type: "number", nodeId: primary.id })}</div><label class="toggle-row"><span>锁定位置</span><input type="checkbox" data-node-field="locked" data-node-id="${primary.id}"${primary.locked ? " checked" : ""}></label><div class="inspector-actions"><button type="button" data-node-action="edit">编辑文字</button><button type="button" data-node-action="duplicate">复制</button><button type="button" data-node-action="hide">从视图隐藏</button><button class="danger-button" type="button" data-node-action="delete">删除</button></div></section>`;
     return;
   }
   if (activeInspectorTab === "history") return renderViewInspector();
@@ -808,11 +924,51 @@ function renderInspector() {
 function updateSelectionUI() {
   const nodes = selectedSemanticNodes();
   const count = nodes.length;
-  selectionToolbar.hidden = count < 2;
+  selectionToolbar.hidden = count === 0;
+  selectionToolbar.dataset.multiple = count > 1 ? "true" : "false";
   $("#selection-count").textContent = `${count} 个已选`;
   $("#selection-hint").textContent = count ? `已选择 ${count} 个节点；拖动任一节点可整体移动` : "空白拖动框选，Space 拖动画布";
+  updateQuickStyleControls();
+  requestAnimationFrame(positionSelectionToolbar);
   renderSidebar();
   renderInspector();
+}
+
+function updateQuickStyleControls() {
+  const style = commonSelectedStyle();
+  const size = $("#quick-title-size");
+  const textColor = $("#quick-text-color");
+  const fill = $("#quick-fill-color");
+  const border = $("#quick-border-color");
+  if (!style || !size) return;
+  size.value = style.fontSize == null ? "" : String(style.fontSize);
+  textColor.value = style.textColor || "#172033";
+  fill.value = style.fill || "#ffffff";
+  border.value = style.borderColor || "#2563eb";
+  $("#quick-bold")?.classList.toggle("is-active", style.fontWeight != null && style.fontWeight >= 700);
+  for (const button of $$('[data-quick-align]')) button.classList.toggle("is-active", style.textAlign === button.dataset.quickAlign);
+  const oneNode = selectedSemanticNodeIds().length === 1;
+  $("#quick-edit").hidden = !oneNode;
+  $("#quick-add-child").hidden = !oneNode || activeView()?.type !== "mindmap";
+}
+
+function positionSelectionToolbar() {
+  if (selectionToolbar.hidden || !graph) return;
+  const elements = selectedSemanticNodeIds().map((id) => graph.findViewByCell(graph.getCellById(id))?.container).filter(Boolean);
+  if (!elements.length) return;
+  const shell = graphShell.getBoundingClientRect();
+  const rects = elements.map((element) => element.getBoundingClientRect());
+  const left = Math.min(...rects.map((rect) => rect.left));
+  const right = Math.max(...rects.map((rect) => rect.right));
+  const top = Math.min(...rects.map((rect) => rect.top));
+  const bottom = Math.max(...rects.map((rect) => rect.bottom));
+  const toolbarWidth = selectionToolbar.offsetWidth || 520;
+  const toolbarHeight = selectionToolbar.offsetHeight || 42;
+  const center = (left + right) / 2 - shell.left;
+  const x = clamp(center, toolbarWidth / 2 + 8, shell.width - toolbarWidth / 2 - 8);
+  const above = top - shell.top - toolbarHeight - 10;
+  selectionToolbar.style.left = `${Math.round(x)}px`;
+  selectionToolbar.style.top = `${Math.round(above >= 8 ? above : bottom - shell.top + 10)}px`;
 }
 
 function updateZoomUI() {
@@ -820,6 +976,7 @@ function updateZoomUI() {
   zoomInput.value = String(Math.round(graph.zoom() * 100));
   const inspectorZoom = $("#inspector-zoom");
   if (inspectorZoom) inspectorZoom.textContent = `${Math.round(graph.zoom()*100)}%`;
+  positionSelectionToolbar();
 }
 
 function setTool(tool) {
@@ -854,12 +1011,15 @@ function selectEdge(id) {
 }
 
 function fitAll() {
-  if (!graph.getNodes().length) return;
-  const bounds = graph.getCellsBBox(graph.getNodes());
-  const padding = 64;
+  const nodes = graph.getNodes().filter((cell) => cell.getData()?.type === "node");
+  if (!nodes.length) return;
+  const bounds = graph.getCellsBBox(nodes);
+  const padding = graphShell.clientWidth < 700 ? 34 : 56;
   const availableWidth = Math.max(160, graphShell.clientWidth - padding * 2);
   const availableHeight = Math.max(160, graphShell.clientHeight - padding * 2);
-  const scale = clamp(Math.min(availableWidth / Math.max(bounds.width, 1), availableHeight / Math.max(bounds.height, 1)), MIN_ZOOM, 1);
+  const geometricScale = Math.min(availableWidth / Math.max(bounds.width, 1), availableHeight / Math.max(bounds.height, 1));
+  const readableMinimum = graphShell.clientWidth < 620 ? 0.42 : READABLE_FIT_ZOOM;
+  const scale = clamp(Math.max(geometricScale, readableMinimum), MIN_ZOOM, 1.15);
   graph.zoomTo(scale);
   scrollerPlugin.centerPoint(bounds.getCenter().x, bounds.getCenter().y);
   updateZoomUI();
@@ -917,14 +1077,18 @@ async function autoLayout() {
   $("#background-status").textContent = "正在自动布局…";
   try {
     const blueprint = activeBlueprint();
-    const laidOut = await runLayoutWorker(blueprint, view.type);
+    const laidOut = view.type === "dependency"
+      ? await runLayoutWorker(blueprint, view.type)
+      : fallbackLayout(blueprint, view.type, view.modeOptions || {});
     const index = currentViewIndex();
     const nextDiagram = clone(diagram);
     const nextView = nextDiagram.views[index];
     nextView.layout.nodes = Object.fromEntries(laidOut.nodes.map((node) => [node.id, { x: node.x, y: node.y, width: node.width, height: node.height }]));
     nextView.layout.layers = Object.fromEntries((laidOut.layers || []).map((layer) => [layer.id, { x: layer.x, y: layer.y, width: layer.width, height: layer.height }]));
-    nextView.layout.engine = "elk";
+    nextView.layout.edges = Object.fromEntries((laidOut.edges || []).map((edge, edgeIndex) => [stableEdgeId(edge, edgeIndex), { fromSide: edge.fromSide, toSide: edge.toSide, waypoints: [] }]));
+    nextView.layout.engine = view.type === "dependency" ? "elk" : "compact";
     nextView.layout.mode = "auto";
+    nextView.layout.editorVersion = 2;
     const after = { diagram: nextDiagram, filePath: currentFilePath };
     history.execute(command("自动布局", () => restoreSnapshot(after), () => restoreSnapshot(before)));
     requestAnimationFrame(fitAll);
@@ -953,7 +1117,7 @@ function runLayoutWorker(blueprint, type) {
   });
 }
 
-function addManualNode(kind = "module") {
+function addManualNode(kind = "module", options = {}) {
   const visibleArea = currentCamera();
   const point = {
     x: visibleArea.x + graphShell.clientWidth / (2 * visibleArea.zoom),
@@ -963,8 +1127,8 @@ function addManualNode(kind = "module") {
   runMutation(`新建${kind === "note" ? "便签" : kind === "group" ? "分组" : "模块"}`, (next) => {
     const node = {
       id,
-      title: kind === "note" ? "新便签" : kind === "group" ? "新分组" : kind === "external" ? "外部系统" : "新模块",
-      subtitle: kind === "note" ? "双击或在检查器中编辑" : "填写职责说明",
+      title: kind === "note" ? "新便签" : kind === "group" ? "新分组" : kind === "external" ? "外部系统" : "新主题",
+      subtitle: kind === "note" ? "输入补充说明" : "输入主题说明",
       kind,
       status: kind === "external" ? "external" : "planned",
       manual: true,
@@ -972,25 +1136,43 @@ function addManualNode(kind = "module") {
       y: Math.round((point.y - (kind === "group" ? GROUP_HEIGHT : CARD_HEIGHT) / 2) / GRID_SIZE) * GRID_SIZE,
       width: kind === "group" ? GROUP_WIDTH : CARD_WIDTH,
       height: kind === "group" ? GROUP_HEIGHT : CARD_HEIGHT,
+      titleSize: kind === "group" ? 18 : 20,
+      subtitleSize: 13,
+      fontWeight: 700,
+      textColor: "#172033",
+      fill: kind === "note" ? "#fff9df" : "#ffffff",
+      borderRadius: 8,
       evidence: [],
     };
     next.nodes.push(node);
     const view = next.views.find((item) => item.id === next.activeViewId);
     view.layout.nodes[id] = { x: node.x, y: node.y, width: node.width, height: node.height };
   }, { selectionIds: [id] });
-  requestAnimationFrame(() => selectNode(id, { center: true }));
+  requestAnimationFrame(() => {
+    selectNode(id, { center: true });
+    if (options.edit !== false && kind !== "group") beginNodeEdit(id);
+  });
+  return id;
 }
 
 function addChildOrSibling(asChild) {
   const parentId = selectedSemanticNodeIds().at(-1);
   if (!parentId || activeView().type !== "mindmap") return addManualNode("module");
   const parent = semanticNode(parentId);
+  const parentCell = graph.getCellById(parentId);
+  const parentPosition = parentCell?.position() || { x: Number(parent.x || 0), y: Number(parent.y || 0) };
+  const siblingCount = diagram.nodes.filter((node) => node.parentId === (asChild ? parentId : parent.parentId)).length;
   const id = `manual-node-${Date.now().toString(36)}`;
   runMutation(asChild ? "新建子节点" : "新建同级节点", (next) => {
-    const node = { id, title: asChild ? "新子节点" : "新同级节点", subtitle: "填写职责说明", kind: "module", status: "planned", manual: true, parentId: asChild ? parentId : parent.parentId, x: Number(parent.x || 0) + 260, y: Number(parent.y || 0) + 90, width: CARD_WIDTH, height: CARD_HEIGHT };
+    const semanticParentId = asChild ? parentId : (parent.parentId || parentId);
+    const node = { id, title: asChild ? "新子主题" : "新同级主题", subtitle: "输入主题说明", kind: "module", status: "planned", manual: true, parentId: semanticParentId, x: parentPosition.x + CARD_WIDTH + 120, y: parentPosition.y + siblingCount * (CARD_HEIGHT + 28), width: CARD_WIDTH, height: CARD_HEIGHT, titleSize: 20, subtitleSize: 13, fontWeight: 700, textColor: "#172033", fill: "#ffffff", borderRadius: 8 };
     next.nodes.push(node);
-    next.edges.push({ id: `manual-edge-${Date.now().toString(36)}`, from: asChild ? parentId : (parent.parentId || parentId), to: id, relation: "contains", manual: true });
+    next.edges.push({ id: `manual-edge-${Date.now().toString(36)}`, from: semanticParentId, to: id, relation: "contains", manual: true });
+    const view = next.views.find((item) => item.id === next.activeViewId);
+    view.layout.nodes[id] = { x: node.x, y: node.y, width: node.width, height: node.height };
   }, { selectionIds: [id] });
+  requestAnimationFrame(() => beginNodeEdit(id));
+  return id;
 }
 
 function copySelection() {
@@ -1123,6 +1305,8 @@ function bindGraphEvents() {
     if (suppressGraphEvents) return;
     updateSelectionUI();
   });
+  graph.on("scale", positionSelectionToolbar);
+  graph.on("translate", positionSelectionToolbar);
 
   graph.on("node:mousedown", ({ node, e }) => {
     const data = node.getData() || {};
@@ -1150,6 +1334,7 @@ function bindGraphEvents() {
     recordAppliedMutation("移动节点", dragSnapshot, after, { selectionIds: selectedSemanticNodeIds() });
     dragSnapshot = null;
     interaction.end();
+    positionSelectionToolbar();
   });
 
   graph.on("node:resized", ({ node }) => {
@@ -1161,15 +1346,11 @@ function bindGraphEvents() {
     dragSnapshot = null;
   });
 
-  graph.on("node:dblclick", ({ node }) => {
+  graph.on("node:dblclick", ({ node, e }) => {
     const data = node.getData() || {};
     if (data.type === "layer") return drillIntoLayer(data.layerId);
-    if (data.group) return drillIntoGroup(node.id);
-    selectNode(node.id);
-    activeInspectorTab = "details";
-    updateInspectorTabs();
-    renderInspector();
-    requestAnimationFrame(() => inspectorContent.querySelector('[data-node-field="title"]')?.focus());
+    if (data.group && e?.altKey) return drillIntoGroup(node.id);
+    beginNodeEdit(node.id);
   });
 
   graph.on("edge:click", ({ edge, e }) => {
@@ -1402,6 +1583,7 @@ function applyInspectorChange(target) {
       else if (property === "depth") view.filters.depth = clamp(Number(target.value), 1, 5);
       else view.modeOptions.layout = target.value;
     });
+    if (property === "layout") requestAnimationFrame(autoLayout);
     return;
   }
   if (key.startsWith("edge:")) {
@@ -1417,7 +1599,8 @@ function applyInspectorChange(target) {
   }
   const ids = selectedSemanticNodeIds();
   if (!ids.length) return;
-  const value = target.type === "checkbox" ? target.checked : target.type === "number" ? Number(target.value) : target.value;
+  const numericKeys = new Set(["titleSize", "subtitleSize", "fontWeight", "strokeWidth", "borderRadius"]);
+  const value = target.type === "checkbox" ? target.checked : (target.type === "number" || numericKeys.has(key)) ? Number(target.value) : target.value;
   runMutation("编辑节点", (next) => {
     for (const node of next.nodes) {
       if (!ids.includes(node.id)) continue;
@@ -1427,8 +1610,11 @@ function applyInspectorChange(target) {
         view.layout.nodes[node.id][key] = Math.round(Number(value)/GRID_SIZE)*GRID_SIZE;
         if (view.type === "architecture") node[key] = view.layout.nodes[node.id][key];
       } else if (key === "title") node.title = textOf(value).trim() || "未命名";
-      else if (key === "titleSize") node.titleSize = clamp(Number(value), 11, 24);
-      else if (key === "subtitleSize") node.subtitleSize = clamp(Number(value), 9, 18);
+      else if (key === "titleSize") node.titleSize = clamp(Number(value), 14, 36);
+      else if (key === "subtitleSize") node.subtitleSize = clamp(Number(value), 10, 22);
+      else if (key === "fontWeight") node.fontWeight = clamp(Number(value), 400, 800);
+      else if (key === "strokeWidth") node.strokeWidth = clamp(Number(value), 0, 8);
+      else if (key === "borderRadius") node.borderRadius = clamp(Number(value), 0, 32);
       else node[key] = value;
     }
   }, { selectionIds: ids });
@@ -1566,9 +1752,9 @@ function loadDiagram(input, options = {}) {
 
 async function loadDefault() {
   try {
-    const stored = localStorage.getItem("mindmap:last-diagram");
+    const stored = localStorage.getItem(LAST_DIAGRAM_KEY);
     if (stored) {
-      loadDiagram(JSON.parse(stored), { filePath: localStorage.getItem("mindmap:last-file") || "", fit: true });
+      loadDiagram(JSON.parse(stored), { filePath: localStorage.getItem(LAST_FILE_KEY) || "", fit: true });
       return;
     }
   } catch {
@@ -1673,6 +1859,7 @@ function bindDomEvents() {
     const edgeId = event.target.closest("[data-edge-id]")?.dataset.edgeId;
     if (edgeId) return selectEdge(edgeId);
     const nodeAction = event.target.closest("[data-node-action]")?.dataset.nodeAction;
+    if (nodeAction === "edit") { const id=selectedSemanticNodeIds().at(-1); if(id) beginNodeEdit(id); }
     if (nodeAction === "duplicate") { copySelection(); pasteSelection(); }
     if (nodeAction === "hide") hideSelection();
     if (nodeAction === "delete") deleteSelection();
@@ -1690,14 +1877,33 @@ function bindDomEvents() {
     if (viewAction === "clear-filter") runMutation("清除依赖聚焦", (next) => { const view=next.views.find((item)=>item.id===next.activeViewId); delete view.filters.rootId; view.hiddenNodes=[]; });
     if (viewAction === "set-root") { const id=selectedSemanticNodeIds().at(-1); if(id){runMutation("设置 MindMap 根节点",(next)=>{next.views.find((item)=>item.id===next.activeViewId).modeOptions.rootId=id;}); autoLayout();} }
     if (viewAction === "reset-drilldown") resetDrilldown();
+    const preset = event.target.closest("[data-style-preset]")?.dataset.stylePreset;
+    const presets = {
+      blue: { fill: "#eef4ff", borderColor: "#4b7bec", textColor: "#153b77", borderWidth: 1.5, borderRadius: 10 },
+      green: { fill: "#eaf8f2", borderColor: "#179b72", textColor: "#145a46", borderWidth: 1.5, borderRadius: 10 },
+      yellow: { fill: "#fff7d6", borderColor: "#e2a018", textColor: "#6d4b00", borderWidth: 1.5, borderRadius: 10 },
+      plain: { fill: "#ffffff", borderColor: "#667085", textColor: "#172033", borderWidth: 1.2, borderRadius: 6 },
+    };
+    if (preset && presets[preset]) applySelectedNodeStyle(presets[preset], "应用主题样式");
   });
 
   selectionToolbar.addEventListener("click", (event) => {
+    if (event.target.closest("#quick-edit")) { const id=selectedSemanticNodeIds().at(-1); if(id) beginNodeEdit(id); return; }
+    if (event.target.closest("#quick-add-child")) { addChildOrSibling(true); return; }
+    if (event.target.closest("#quick-bold")) { const style=commonSelectedStyle(); applySelectedNodeStyle({ fontWeight: style?.fontWeight >= 700 ? 400 : 700 }, "切换粗体"); return; }
+    const quickAlign = event.target.closest("[data-quick-align]")?.dataset.quickAlign;
+    if (quickAlign) { applySelectedNodeStyle({ textAlign: quickAlign }, "修改文字对齐"); return; }
     const action = event.target.closest("[data-batch-action]")?.dataset.batchAction;
     if (action === "align-left" || action === "align-top" || action === "distribute") alignSelection(action);
     else if (action === "group") groupSelected();
     else if (action === "hide") hideSelection();
     else if (action === "delete") deleteSelection();
+  });
+  selectionToolbar.addEventListener("change", (event) => {
+    if (event.target.id === "quick-title-size" && event.target.value) applySelectedNodeStyle({ fontSize: Number(event.target.value) }, "修改标题字号");
+    if (event.target.id === "quick-text-color") applySelectedNodeStyle({ textColor: event.target.value }, "修改文字颜色");
+    if (event.target.id === "quick-fill-color") applySelectedNodeStyle({ fill: event.target.value }, "修改填充颜色");
+    if (event.target.id === "quick-border-color") applySelectedNodeStyle({ borderColor: event.target.value }, "修改边框颜色");
   });
 
   commandSearch.addEventListener("input", () => renderCommandPalette(commandSearch.value));
@@ -1775,6 +1981,7 @@ function bindKeyboard() {
     if (key === "n") return addManualNode("note");
     if (key === "g" && !event.shiftKey) return groupSelected();
     if (key === "l") return autoLayout();
+    if (event.key === "F2") { event.preventDefault(); const id=selectedSemanticNodeIds().at(-1); if(id) return beginNodeEdit(id); }
     if (event.key === "0" && event.shiftKey) { event.preventDefault(); return fitSelection(); }
     if (event.key === "0") { event.preventDefault(); return fitAll(); }
     if (event.key === "1") { event.preventDefault(); return setZoom(100); }
@@ -1794,6 +2001,7 @@ function bindKeyboard() {
     }
     if (activeView()?.type === "mindmap" && event.key === "Tab") { event.preventDefault(); return addChildOrSibling(true); }
     if (activeView()?.type === "mindmap" && event.key === "Enter") { event.preventDefault(); return addChildOrSibling(false); }
+    if (event.key === "Enter") { const id=selectedSemanticNodeIds().at(-1); if(id){event.preventDefault(); return beginNodeEdit(id);} }
     if (event.key === "?") openCommandPalette();
   });
   window.addEventListener("keyup", (event) => {
@@ -1808,8 +2016,9 @@ function bindKeyboard() {
 async function init() {
   refreshIcons();
   if (window.innerWidth <= 900) appShell.classList.add("is-left-collapsed", "is-right-collapsed");
-  else if (window.innerWidth <= 1024) appShell.classList.add("is-right-collapsed");
+  else appShell.classList.add("is-right-collapsed");
   initGraph();
+  initInlineEditing();
   bindDomEvents();
   bindPointerWindowEvents();
   bindKeyboard();

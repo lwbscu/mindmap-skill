@@ -118,8 +118,8 @@
       "y": 196,
       "width": 560,
       "height": 86,
-      "titleSize": 36,
-      "subtitleSize": 22
+      "titleSize": 20,
+      "subtitleSize": 13
     },
     {
       "id": "output-artifacts",
@@ -136,8 +136,8 @@
       "y": 196,
       "width": 590,
       "height": 86,
-      "titleSize": 35,
-      "subtitleSize": 22
+      "titleSize": 20,
+      "subtitleSize": 13
     },
     {
       "id": "cerebrums",
@@ -153,8 +153,8 @@
       "y": 438,
       "width": 540,
       "height": 90,
-      "titleSize": 37,
-      "subtitleSize": 23
+      "titleSize": 20,
+      "subtitleSize": 13
     },
     {
       "id": "toolkit-common",
@@ -170,8 +170,8 @@
       "y": 438,
       "width": 590,
       "height": 90,
-      "titleSize": 36,
-      "subtitleSize": 22
+      "titleSize": 20,
+      "subtitleSize": 13
     },
     {
       "id": "env-registry",
@@ -187,8 +187,8 @@
       "y": 702,
       "width": 460,
       "height": 90,
-      "titleSize": 36,
-      "subtitleSize": 22
+      "titleSize": 20,
+      "subtitleSize": 13
     },
     {
       "id": "runtime-provider",
@@ -205,8 +205,8 @@
       "width": 660,
       "height": 106,
       "stroke": "#0f766e",
-      "titleSize": 39,
-      "subtitleSize": 23
+      "titleSize": 20,
+      "subtitleSize": 13
     },
     {
       "id": "env-spec-prompts",
@@ -222,8 +222,8 @@
       "y": 702,
       "width": 430,
       "height": 90,
-      "titleSize": 34,
-      "subtitleSize": 21
+      "titleSize": 20,
+      "subtitleSize": 13
     },
     {
       "id": "libero-provider",
@@ -239,8 +239,8 @@
       "y": 1010,
       "width": 560,
       "height": 100,
-      "titleSize": 36,
-      "subtitleSize": 22
+      "titleSize": 20,
+      "subtitleSize": 13
     },
     {
       "id": "behavior-provider",
@@ -257,8 +257,8 @@
       "width": 610,
       "height": 100,
       "stroke": "#ef4444",
-      "titleSize": 36,
-      "subtitleSize": 22
+      "titleSize": 20,
+      "subtitleSize": 13
     },
     {
       "id": "behavior-schemas",
@@ -275,8 +275,8 @@
       "y": 1010,
       "width": 500,
       "height": 100,
-      "titleSize": 34,
-      "subtitleSize": 20
+      "titleSize": 20,
+      "subtitleSize": 13
     },
     {
       "id": "env-server-rpc",
@@ -292,8 +292,8 @@
       "y": 1317,
       "width": 520,
       "height": 86,
-      "titleSize": 34,
-      "subtitleSize": 21
+      "titleSize": 20,
+      "subtitleSize": 13
     },
     {
       "id": "vla-server",
@@ -309,8 +309,8 @@
       "y": 1317,
       "width": 560,
       "height": 86,
-      "titleSize": 34,
-      "subtitleSize": 21
+      "titleSize": 20,
+      "subtitleSize": 13
     },
     {
       "id": "full-task-runner",
@@ -327,8 +327,8 @@
       "width": 590,
       "height": 86,
       "stroke": "#ef4444",
-      "titleSize": 34,
-      "subtitleSize": 21
+      "titleSize": 20,
+      "subtitleSize": 13
     },
     {
       "id": "official-success",
@@ -345,8 +345,8 @@
       "y": 1544,
       "width": 560,
       "height": 78,
-      "titleSize": 33,
-      "subtitleSize": 21
+      "titleSize": 20,
+      "subtitleSize": 13
     },
     {
       "id": "next-intervention",
@@ -368,8 +368,8 @@
       "width": 960,
       "height": 78,
       "stroke": "#ef4444",
-      "titleSize": 33,
-      "subtitleSize": 20
+      "titleSize": 20,
+      "subtitleSize": 13
     }
   ],
   "edges": [

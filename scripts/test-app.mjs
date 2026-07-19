@@ -12,7 +12,9 @@ import { createCamera, screenToWorld, setZoomAt, worldToScreen } from "../app/ed
 import { copySubgraph, pasteSubgraph } from "../app/editor/clipboard.mjs";
 import { command, createCommandHistory } from "../app/editor/command-history.mjs";
 import { createInteractionStateMachine, InteractionState } from "../app/editor/interaction-state.mjs";
+import { computeInlineEditorPlacement, createInlineEditDraft, inlineEditDraftChanged, normalizeInlineEditDraft } from "../app/editor/inline-editing.mjs";
 import { selectByMarquee } from "../app/editor/selection-geometry.mjs";
+import { createNodeStylePatch, getCommonNodeStyle, normalizeNodeStyle } from "../app/editor/style-model.mjs";
 import { shortestPath, stableEdgeId } from "../app/views/graph-query.mjs";
 import { fallbackLayout, layoutWithElk } from "../app/views/layout-profiles.mjs";
 import { activate, ensureViews } from "../app/views/view-model.mjs";
@@ -132,6 +134,22 @@ machine.end();
 assert.equal(machine.beginFromInput({ target: "port" }), true);
 assert.equal(machine.state, InteractionState.CONNECTING);
 
+const editDraft = createInlineEditDraft({ title: "主题", subtitle: "说明" });
+assert.deepEqual(editDraft, { title: "主题", subtitle: "说明" });
+assert.deepEqual(normalizeInlineEditDraft({ title: "  新主题  ", subtitle: "  新说明  " }), { title: "新主题", subtitle: "新说明" });
+assert.equal(inlineEditDraftChanged(editDraft, { title: "主题 2", subtitle: "说明" }), true);
+const editorPlacement = computeInlineEditorPlacement({ left: 900, top: 700, width: 200, height: 80 }, { left: 0, top: 0, width: 1024, height: 768 }, { minWidth: 320, minHeight: 108 });
+assert.ok(editorPlacement.left + editorPlacement.width <= 1016);
+assert.ok(editorPlacement.top + editorPlacement.minHeight <= 760);
+
+const normalizedStyle = normalizeNodeStyle({ fontSize: 28, fontWeight: "bold", textColor: "#123456", fill: "#ffffff", borderColor: "#234567", borderWidth: 2, textAlign: "left", borderRadius: 10 });
+assert.equal(normalizedStyle.fontWeight, 700);
+assert.equal(normalizedStyle.fontSize, 28);
+assert.equal(getCommonNodeStyle([normalizedStyle, { ...normalizedStyle, fill: "#fff7d6" }], { mixedValue: null }).fill, null);
+const stylePatch = createNodeStylePatch(normalizedStyle, { fontSize: 32, fill: "#eef4ff" });
+assert.equal(stylePatch.after.fontSize, 32);
+assert.equal(stylePatch.inverse().after.fontSize, 28);
+
 const small = { canvas: { width: 800, height: 600 }, layers: [], nodes: diagram.nodes.slice(0, 5), edges: diagram.edges.filter((edge) => diagram.nodes.slice(0, 5).some((node) => node.id === edge.from) && diagram.nodes.slice(0, 5).some((node) => node.id === edge.to)) };
 const elkLayout = await layoutWithElk(small, "architecture");
 assert.ok(elkLayout.nodes.every((node) => Number.isFinite(node.x) && Number.isFinite(node.y)));
@@ -157,7 +175,7 @@ const desktopMain = await fs.readFile(path.join(root, "desktop", "main.mjs"), "u
 for (const id of ["app-shell", "graph-canvas", "marquee", "lasso-overlay", "minimap", "node-list", "layer-list", "inspector-content", "selection-toolbar", "zoom-percent", "add-node", "toggle-left", "toggle-right", "error-banner"]) {
   assert.ok(appIndex.includes(`id="${id}"`), `app index missing ${id}`);
 }
-for (const snippet of ["new Graph(", "new Selection(", "new Scroller(", "new MiniMap(", "selectByMarquee", "pasteSubgraph", "edge:connected", "autoLayout", "exportPdf", "exportMermaid", "data-view-mode"]) {
+for (const snippet of ["new Graph(", "new Selection(", "new Scroller(", "new MiniMap(", "selectByMarquee", "pasteSubgraph", "createInlineEditor", "applySelectedNodeStyle", "edge:connected", "autoLayout", "exportPdf", "exportMermaid", "data-view-mode"]) {
   assert.ok(appScript.includes(snippet), `app script missing ${snippet}`);
 }
 for (const selector of [".app-shell", ".topbar", ".sidebar", ".inspector", ".canvas-controls", ".selection-toolbar", ".minimap-shell", ".x6-widget-selection-box"]) {

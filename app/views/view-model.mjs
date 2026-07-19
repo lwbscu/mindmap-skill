@@ -35,11 +35,6 @@ function layoutFromDiagram(diagram) {
         "width",
         "height",
         "layer",
-        "fill",
-        "stroke",
-        "strokeWidth",
-        "titleSize",
-        "subtitleSize",
         "locked",
         "collapsed",
         "groupId"
@@ -126,11 +121,13 @@ function compactLegacyArchitectureLayout(diagram) {
 }
 
 function normalizeLayout(layout = {}) {
+  const nodes = Object.fromEntries(Object.entries(layout.nodes && typeof layout.nodes === "object" ? layout.nodes : {}).map(([id, item]) => [id, pickDefined(item || {}, ["x", "y", "width", "height", "layer", "locked", "collapsed", "groupId"])]));
   return {
     mode: layout.mode ?? "manual",
     engine: layout.engine ?? "fallback",
+    editorVersion: Number(layout.editorVersion || 0),
     profile: normalizeViewType(layout.profile ?? layout.type),
-    nodes: layout.nodes && typeof layout.nodes === "object" ? clone(layout.nodes) : {},
+    nodes,
     layers: layout.layers && typeof layout.layers === "object" ? clone(layout.layers) : {},
     edges: layout.edges && typeof layout.edges === "object" ? clone(layout.edges) : {}
   };
@@ -155,17 +152,19 @@ function normalizeStringArray(value) {
 
 function defaultView(diagram, type) {
   const profile = getLayoutProfile(type);
-  const layout = type === DEFAULT_VIEW_TYPE
-    ? compactLegacyArchitectureLayout(diagram)
-    : layoutFromDiagram(fallbackLayout(diagram, type));
+  const modeOptions = type === "mindmap"
+    ? { rootId: diagram.nodes?.[0]?.id ?? null, layout: "both" }
+    : {};
+  const layout = layoutFromDiagram(fallbackLayout(diagram, type, modeOptions));
   return {
     id: type,
     type,
     label: viewLabel(type),
     camera: compactCameraFor(diagram),
     layout: {
-      mode: type === DEFAULT_VIEW_TYPE ? "manual" : profile.direction,
-      engine: "fallback",
+      mode: "auto",
+      engine: "compact",
+      editorVersion: 2,
       profile: type,
       nodes: layout.nodes,
       layers: layout.layers,
@@ -179,9 +178,7 @@ function defaultView(diagram, type) {
     filters: type === "dependency"
       ? { direction: "both", depth: 2, relations: [] }
       : {},
-    modeOptions: type === "mindmap"
-      ? { rootId: diagram.nodes?.[0]?.id ?? null, layout: "radial" }
-      : {}
+    modeOptions
   };
 }
 
@@ -194,7 +191,9 @@ function normalizeView(rawView, diagram, existingIds = new Set()) {
     id = `${requestedId}-${suffix}`;
   }
   existingIds.add(id);
-  const layout = normalizeLayout({ ...fallback.layout, ...(rawView?.layout ?? {}) });
+  const hasManualNodes = (diagram.nodes ?? []).some((node) => node.manual);
+  const shouldUpgradeGeneratedLayout = Boolean(rawView?.layout) && !Number(rawView.layout.editorVersion) && !hasManualNodes;
+  const layout = normalizeLayout(shouldUpgradeGeneratedLayout ? fallback.layout : { ...fallback.layout, ...(rawView?.layout ?? {}) });
   layout.profile = type;
   return {
     ...fallback,

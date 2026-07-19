@@ -10,7 +10,8 @@ MindMap 是一个面向 Claude Code 与 Codex 的本地桌面结构框图工具�
 - Use large readable text, pastel layer bands, explicit arrow routes, and label backgrounds.
 - Switch between MindMap, dependency, and architecture views over one shared graph, with per-view camera, layout, filters, hidden state, and saved views.
 - Work in a focused infinite canvas with rectangle/lasso selection, multi-node dragging, pan/zoom, ports, grouping, grid snapping, search, minimap, and responsive inspectors.
-- Edit nodes and relations through the inspector, use 100-step undo/redo and continuous paste offsets, run ELK auto-layout in a Worker, and export SVG, PNG, PDF, JSON, standalone HTML, or Mermaid.
+- Edit node titles and descriptions in place with double-click or `F2`, then format one or many nodes from the floating toolbar or inspector. Font size, weight, alignment, text/fill/border colors, border width, and corner radius are all editable and undoable.
+- Use XMind-style topic creation in MindMap view: `Tab` adds a child and `Enter` adds a sibling. Use 100-step undo/redo and continuous paste offsets, run automatic layouts, and export SVG, PNG, PDF, JSON, standalone HTML, or Mermaid.
 - Validate diagrams at script runtime, including every example, node IDs, edge references, status tags, and relation tags.
 - Install MindMap as a local desktop launcher on Linux.
 - Publish the static app to GitHub Pages without runtime dependencies.
@@ -52,7 +53,9 @@ Start the local desktop window:
 npm run app:open
 ```
 
-The normal entry is the Electron desktop window. It loads local files through the `mindmap://` protocol and does not start a `127.0.0.1` server. Use `npm run app:serve` only when debugging the static web server directly. The default example is [`examples/rpent-libero-behavior.diagram.json`](examples/rpent-libero-behavior.diagram.json), currently covering the RPent module architecture, BEHAVIOR first-pass integration, and next-stage planned interventions. Use **打开** to load another diagram; switch among **MindMap / 依赖图 / 架构图**; and use the left navigator, minimap, and right inspector to edit details, relations, evidence, risks, geometry, colors, and view filters. Drag empty space to marquee-select, drag right-to-left for crossing selection, hold `Alt` for lasso, and hold `Shift` to toggle selection. Use **连线** or drag from ports to create relations, `Space`/middle mouse to pan, `Ctrl/Cmd` + wheel to zoom around the pointer, and standard copy/paste/undo shortcuts before exporting.
+The normal entry is the Electron desktop window. It loads local files through the `mindmap://` protocol and does not start a `127.0.0.1` server. Use `npm run app:serve` only when debugging the static web server directly. The default example is [`examples/rpent-libero-behavior.diagram.json`](examples/rpent-libero-behavior.diagram.json), currently covering the RPent module architecture, BEHAVIOR first-pass integration, and next-stage planned interventions. Use **打开** to load another diagram and switch among **MindMap / 依赖图 / 架构图**. Double-click a card or press `F2` to edit its title and description; press `Enter` to commit, `Shift+Enter` for a line break, or `Esc` to cancel. Selecting nodes opens a compact floating format bar for title size, bold, text/fill/border colors, and alignment; the right inspector contains the complete style controls. In MindMap view, use `Tab` for a child topic and `Enter` for a sibling topic.
+
+Drag empty space to marquee-select, drag right-to-left for crossing selection, hold `Alt` for lasso, and hold `Shift` to toggle selection. Use **连线** or drag from ports to create relations, `Space`/middle mouse to pan, `Ctrl/Cmd` + wheel to zoom around the pointer, and standard copy/paste/undo shortcuts before exporting. Automatic layout uses compact 20px-title cards and reroutes stale edge waypoints so a whole-diagram overview stays legible.
 
 Install a Linux desktop launcher so MindMap appears in Applications:
 
@@ -104,7 +107,7 @@ MindMap diagrams use `schemaVersion: "mindmap-app/v1"` with these top-level fiel
 - `edges`
 - optional `activeViewId`, `views`, and `savedViews`
 
-Nodes use absolute layout fields such as `id`, `title`, `subtitle`, `x`, `y`, `width`, and `height`. Edges support `from`, `to`, side anchors, explicit `waypoints`, labels, and label positions.
+Nodes use absolute layout fields such as `id`, `title`, `subtitle`, `x`, `y`, `width`, and `height`. Editable appearance fields include `titleSize`, `subtitleSize`, `fontWeight`, `textColor`, `subtitleColor`, `textAlign`, `fill`, `stroke`, `strokeWidth`, and `borderRadius`. Edges support `from`, `to`, side anchors, explicit `waypoints`, labels, and label positions.
 
 Older `mindmap-app/v1` files without `views` open as the default architecture view and are compacted for readable whole-diagram preview. The app adds MindMap and dependency views in memory without changing the shared top-level nodes and edges.
 

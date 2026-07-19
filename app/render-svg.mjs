@@ -264,9 +264,9 @@ function renderNode(node, style, layer) {
   const stroke = node.stroke
     ?? (node.kind === "data" ? style.dataStroke : node.kind === "risk" ? style.riskStroke : layer?.stroke ?? style.nodeStroke);
   const accent = node.accent ?? stroke;
-  const rx = Math.min(8, node.radius ?? 7);
-  const requestedTitleSize = node.titleSize ?? 36;
-  const requestedSubtitleSize = node.subtitleSize ?? (node.subtitle && node.subtitle.length > 28 ? 21 : 23);
+  const rx = Math.min(32, node.borderRadius ?? node.radius ?? 8);
+  const requestedTitleSize = node.titleSize ?? 20;
+  const requestedSubtitleSize = node.subtitleSize ?? 13;
   const subtitleLines = (Array.isArray(node.subtitle) ? node.subtitle : (node.subtitle ? [node.subtitle] : [])).slice(0, 2);
   const iconSize = Math.max(42, Math.min(56, node.height - 24));
   const iconX = node.x + 16;
@@ -275,21 +275,21 @@ function renderNode(node, style, layer) {
   const contentWidth = Math.max(80, node.x + node.width - textX - 18);
   const titleWidth = Math.max(1, estimateTextWidth(node.title, requestedTitleSize));
   const subtitleWidth = Math.max(1, ...subtitleLines.map((line) => estimateTextWidth(line, requestedSubtitleSize)));
-  const titleSize = Math.max(20, Math.min(requestedTitleSize, requestedTitleSize * contentWidth / titleWidth));
-  const subtitleSize = Math.max(15, Math.min(requestedSubtitleSize, requestedSubtitleSize * contentWidth / subtitleWidth));
+  const titleSize = Math.max(14, Math.min(requestedTitleSize, requestedTitleSize * contentWidth / titleWidth));
+  const subtitleSize = Math.max(10, Math.min(requestedSubtitleSize, requestedSubtitleSize * contentWidth / subtitleWidth));
   const titleY = node.y + (subtitleLines.length ? node.height * 0.37 : node.height / 2);
   const subtitleY = node.y + node.height * 0.68;
   const content = [
-    `<rect class="node-card" x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" rx="${rx}" fill="${esc(node.fill ?? style.nodeFill)}" stroke="${esc(style.nodeBorder)}" stroke-width="${node.strokeWidth ?? 2}" filter="url(#node-shadow)"/>`,
+    `<rect class="node-card" x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" rx="${rx}" fill="${esc(node.fill ?? style.nodeFill)}" stroke="${esc(stroke)}" stroke-width="${node.strokeWidth ?? 2}" filter="url(#node-shadow)"/>`,
     `<path class="node-accent" d="M ${node.x + rx} ${node.y + 1} H ${node.x + 8} Q ${node.x + 1} ${node.y + 1} ${node.x + 1} ${node.y + rx} V ${node.y + node.height - rx} Q ${node.x + 1} ${node.y + node.height - 1} ${node.x + 8} ${node.y + node.height - 1} H ${node.x + rx}" fill="${esc(accent)}"/>`,
     `<rect class="node-icon" x="${iconX}" y="${iconY}" width="${iconSize}" height="${iconSize}" rx="${Math.min(8, iconSize / 6)}" fill="${esc(accent)}"/>`,
     textLine(nodeIconLabel(node), iconX + iconSize / 2, iconY + iconSize / 2 + 1, { size: Math.max(14, iconSize * 0.3), fill: "#ffffff", weight: 850 }),
-    textLine(node.title, textX, titleY, { anchor: "start", size: titleSize, fill: node.titleFill ?? style.text, weight: node.titleWeight ?? 780 }),
+    textLine(node.title, textX, titleY, { anchor: "start", size: titleSize, fill: node.textColor ?? node.titleFill ?? style.text, weight: node.fontWeight ?? node.titleWeight ?? 700 }),
     subtitleLines.length ? renderMultiline(subtitleLines, textX, subtitleY, {
       anchor: "start",
       size: subtitleSize,
       weight: node.subtitleWeight ?? 520,
-      fill: node.subtitleFill ?? style.muted,
+      fill: node.subtitleColor ?? node.subtitleFill ?? style.muted,
       lineHeight: node.subtitleLineHeight ?? 27
     }) : "",
     renderStatusBadge(node, style, node.x + node.width - 10, node.y + node.height - (node.statusSize ?? 17) - 16)

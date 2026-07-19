@@ -187,6 +187,15 @@ async function runSmoke(window) {
       window.webContents.sendInputEvent({ type: "mouseUp", x: point.x, y: point.y, button: "left", clickCount: 1, modifiers });
       await pause();
     };
+    const doubleClick = async (point) => {
+      if (!point) throw new Error(`Missing double-click target during ${smokeStep}`);
+      for (const clickCount of [1, 2]) {
+        window.webContents.sendInputEvent({ type: "mouseDown", x: point.x, y: point.y, button: "left", clickCount });
+        window.webContents.sendInputEvent({ type: "mouseUp", x: point.x, y: point.y, button: "left", clickCount });
+        await pause(45);
+      }
+      await pause(100);
+    };
     const drag = async (start, end, options = {}) => {
       if (!start || !end) throw new Error(`Missing drag target during ${smokeStep}`);
       const button = options.button || "left";
@@ -225,6 +234,24 @@ async function runSmoke(window) {
     }))()`);
     if (!initial.hasGraph || initial.nodes < 2) throw new Error(`graph did not load: ${JSON.stringify(initial)}`);
 
+    smokeStep = "inline text editing";
+    await doubleClick(await pointFor('#graph-canvas .x6-node[data-cell-id="cli-dashboard"]'));
+    const inlineEditorOpened = await evaluate('Boolean(document.querySelector(".inline-editor"))');
+    await evaluate(`(() => { const input=document.querySelector('.inline-editor__input--title'); input?.focus(); input?.select(); return document.activeElement === input; })()`);
+    await pause(80);
+    await window.webContents.insertText("CLI / Dashboard 已编辑");
+    const inlineValueEntered = await evaluate('document.querySelector(".inline-editor__input--title")?.value === "CLI / Dashboard 已编辑"');
+    await evaluate(`document.querySelector('.inline-editor__input--title')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))`);
+    await pause(140);
+    const inlineCommitState = await evaluate(`(() => ({
+      editorOpen: Boolean(document.querySelector('.inline-editor')),
+      sidebarTitle: document.querySelector('#node-list button[data-node-id="cli-dashboard"] .node-list-title')?.textContent || '',
+      canvasTitle: document.querySelector('#graph-canvas .x6-node[data-cell-id="cli-dashboard"] text:nth-of-type(2)')?.textContent || ''
+    }))()`);
+    const inlineEditCommitted = inlineCommitState.sidebarTitle === "CLI / Dashboard 已编辑";
+    await shortcut("Z");
+    const inlineEditUndoRestored = await evaluate('document.querySelector(\'#node-list button[data-node-id="cli-dashboard"] .node-list-title\')?.textContent === "CLI / Dashboard"');
+
     smokeStep = "marquee selection";
     const marquee = await evaluate(`(() => {
       const nodes = [...document.querySelectorAll('#graph-canvas .x6-node[data-cell-id]')]
@@ -255,6 +282,19 @@ async function runSmoke(window) {
     await click(first);
     await click(second, ["shift"]);
     const multiSelectedCount = await evaluate("document.querySelectorAll('.x6-widget-selection-box').length");
+
+    smokeStep = "batch typography and color";
+    await evaluate(`(() => { const input=document.querySelector('#quick-title-size'); input.value='24'; input.dispatchEvent(new Event('change',{bubbles:true})); })()`);
+    await pause(140);
+    const batchFontApplied = await evaluate(`['cli-dashboard','output-artifacts'].every((id) => document.querySelector('#graph-canvas .x6-node[data-cell-id="'+id+'"] text:nth-of-type(2)')?.getAttribute('font-size') === '24')`);
+    await evaluate(`(() => { const input=document.querySelector('#quick-fill-color'); input.value='#fff4cc'; input.dispatchEvent(new Event('change',{bubbles:true})); })()`);
+    await pause(140);
+    const batchFillApplied = await evaluate(`['cli-dashboard','output-artifacts'].every((id) => document.querySelector('#graph-canvas .x6-node[data-cell-id="'+id+'"] rect')?.getAttribute('fill') === '#fff4cc')`);
+    await shortcut("Z");
+    await shortcut("Z");
+
+    await click(await pointFor('#node-list button[data-node-id="cli-dashboard"]'));
+    await click(await pointFor('#node-list button[data-node-id="output-artifacts"]'), ["shift"]);
 
     smokeStep = "group selection";
     await shortcut("G", []);
@@ -363,6 +403,13 @@ async function runSmoke(window) {
       edgesBefore: initial.edges,
       marqueeSelectedCount,
       multiSelectedCount,
+      inlineEditorOpened,
+      inlineValueEntered,
+      inlineCommitState,
+      inlineEditCommitted,
+      inlineEditUndoRestored,
+      batchFontApplied,
+      batchFillApplied,
       nodesAfterGroup,
       nodesAfterGroupUndo,
       groupCreated: nodesAfterGroup === initial.nodes + 1,
@@ -411,6 +458,10 @@ async function runVisualSmoke(window) {
       const shell = document.querySelector('#app-shell');
       const graphRect = document.querySelector('#graph-shell').getBoundingClientRect();
       const layerRects = [...document.querySelectorAll('#graph-canvas .x6-node[data-cell-id^="layer:"]')].map((element) => element.getBoundingClientRect());
+      const sampleNode = document.querySelector('#graph-canvas .x6-node[data-cell-id]:not([data-cell-id^="layer:"])');
+      const sampleTitle = sampleNode?.querySelector('text:nth-of-type(2)');
+      const sampleNodeRect = sampleNode?.getBoundingClientRect();
+      const sampleTitleRect = sampleTitle?.getBoundingClientRect();
       return {
         ok: Number(document.querySelector('#node-count')?.textContent || 0) > 0,
         innerWidth,
@@ -423,6 +474,19 @@ async function runVisualSmoke(window) {
         zoom: Number(document.querySelector('#zoom-percent')?.value || 0),
         nodes: Number(document.querySelector('#node-count')?.textContent || 0),
         edges: Number(document.querySelector('#edge-count')?.textContent || 0),
+        renderedNodes: [...document.querySelectorAll('#graph-canvas .x6-node[data-cell-id]')]
+          .filter((element) => !element.getAttribute('data-cell-id').startsWith('layer:')).length,
+        sampleTypography: sampleTitle ? {
+          x: sampleTitle.getAttribute('x'),
+          y: sampleTitle.getAttribute('y'),
+          anchor: sampleTitle.getAttribute('text-anchor'),
+          fontSize: sampleTitle.getAttribute('font-size'),
+          transform: sampleTitle.getAttribute('transform'),
+          nodeLeft: Math.round(sampleNodeRect.left),
+          nodeWidth: Math.round(sampleNodeRect.width),
+          titleLeft: Math.round(sampleTitleRect.left),
+          titleWidth: Math.round(sampleTitleRect.width)
+        } : null,
         graphRect: { left: Math.round(graphRect.left), top: Math.round(graphRect.top), right: Math.round(graphRect.right), bottom: Math.round(graphRect.bottom), width: Math.round(graphRect.width), height: Math.round(graphRect.height) },
         layerBounds: layerRects.length ? { left: Math.round(Math.min(...layerRects.map((rect) => rect.left))), top: Math.round(Math.min(...layerRects.map((rect) => rect.top))), right: Math.round(Math.max(...layerRects.map((rect) => rect.right))), bottom: Math.round(Math.max(...layerRects.map((rect) => rect.bottom))) } : null
       };

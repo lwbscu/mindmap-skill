@@ -110,8 +110,13 @@ Use left-side tabs for compact architecture diagrams. Keep layer labels short.
   "height": 88,
   "status": "implemented",
   "evidence": ["src/runtime.ts:42"],
-  "titleSize": 39,
-  "subtitleSize": 24
+  "titleSize": 20,
+  "subtitleSize": 13,
+  "fontWeight": 700,
+  "textColor": "#172033",
+  "subtitleColor": "#667085",
+  "textAlign": "left",
+  "borderRadius": 8
 }
 ```
 
@@ -130,8 +135,9 @@ Useful optional fields:
 - `evidence`: array of compact source strings
 - `risks`: array of compact risk strings
 - `links`: array of `{ "label": "...", "href": "..." }`
-- `fill`, `stroke`, `strokeWidth`
-- `titleSize`, `subtitleSize`
+- `fill`, `stroke`, `strokeWidth`, `borderRadius`
+- `titleSize`, `subtitleSize`, `fontWeight`
+- `textColor`, `subtitleColor`, `textAlign`
 
 Use absolute layout coordinates. Keep node titles readable at whole-diagram zoom.
 
