@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import { build } from "vite";
 import { assertValidDiagram } from "../app/diagram-validator.mjs";
 import { renderStandaloneHtml, renderSvg } from "../app/render-svg.mjs";
+import { ensureViews } from "../app/views/view-model.mjs";
+import { resolveView } from "../app/views/view-resolver.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
@@ -62,10 +64,11 @@ for (const file of exampleNames) {
   const target = path.join(examplesOut, file);
   await fs.copyFile(source, target);
   copiedExamples.push(target);
-  const diagram = assertValidDiagram(JSON.parse(await fs.readFile(source, "utf8")));
-  const svg = renderSvg(diagram);
-  const html = renderStandaloneHtml(diagram, svg);
-  const slug = slugFromTitle(diagram.title);
+  const diagram = ensureViews(assertValidDiagram(JSON.parse(await fs.readFile(source, "utf8"))));
+  const blueprint = resolveView(diagram, diagram.activeViewId, { routeEdges: true });
+  const svg = renderSvg(blueprint);
+  const html = renderStandaloneHtml(blueprint, svg);
+  const slug = slugFromTitle(blueprint.title);
   const svgPath = path.join(exportsOut, `${slug}.svg`);
   const htmlPath = path.join(exportsOut, `${slug}.html`);
   await fs.writeFile(svgPath, svg, "utf8");

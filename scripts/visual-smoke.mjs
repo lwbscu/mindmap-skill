@@ -43,6 +43,8 @@ for (const [width, height] of sizes) {
   assert.equal(result.nodes, 15);
   assert.equal(result.edges, 18);
   assert.equal(result.renderedNodes, result.nodes, `${width}x${height} did not render every semantic node`);
+  assert.equal(result.renderedEdges, result.edges, `${width}x${height} did not render every semantic edge`);
+  assert.ok(result.edgePaths.some((path) => path.d && path.d.length > 4), `${width}x${height} edge paths are blank`);
   assert.equal(result.topbarOverflow, false, `${width}x${height} topbar overflowed`);
   assert.equal(result.statusbarOverflow, false, `${width}x${height} statusbar overflowed`);
   assert.ok(result.layerBounds, `${width}x${height} did not render layer bounds`);
@@ -51,7 +53,14 @@ for (const [width, height] of sizes) {
   assert.ok(result.zoom >= (width <= 620 ? 42 : 55), `${width}x${height} fit zoom is too small to read`);
   assert.ok(Number(result.sampleTypography?.fontSize) >= 18, `${width}x${height} node title is too small`);
   assert.equal(result.sampleTypography?.transform, null, `${width}x${height} inherited text transform shifted card copy`);
+  assert.equal(result.inlineEditorActive, true, `${width}x${height} inline editor did not open`);
+  assert.equal(result.inlineEditorVisible, true, `${width}x${height} inline editor is outside the visible viewport`);
+  assert.equal(result.structuralControlsDisplay, "none", `${width}x${height} structural controls remained visible during text editing`);
+  assert.equal(result.toolbar?.visible, true, `${width}x${height} rich-text toolbar is not visible`);
+  assert.equal(result.toolbar?.withinViewport, true, `${width}x${height} rich-text toolbar escaped the viewport`);
+  assert.equal(result.toolbar?.overlapsEditor, false, `${width}x${height} rich-text toolbar overlaps the editor`);
   await fs.access(result.screenshotPath);
+  await fs.access(result.toolbarScreenshotPath);
   results.push({ requested: `${width}x${height}`, ...result });
 }
 

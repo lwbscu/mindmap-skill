@@ -1,3 +1,5 @@
+import { validateImageAssets } from "./media/image-assets.mjs";
+
 const VALID_RELATIONS = new Set([
   "calls",
   "reads",
@@ -22,6 +24,55 @@ const STATUS_LABELS = new Map([
 ]);
 
 const SIDES = new Set(["top", "right", "bottom", "left"]);
+const RICH_BLOCK_TYPES = new Set(["paragraph", "bullet-list-item", "ordered-list-item"]);
+const TEXT_ALIGNS = new Set(["left", "center", "right"]);
+const SAFE_LINK_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
+const ROUTE_MODES = new Set(["auto", "manual"]);
+const ROUTE_STYLES = new Set(["orthogonal", "curved"]);
+
+function isSafeLink(value) {
+  if (!value) return true;
+  try {
+    const url = new URL(String(value));
+    return SAFE_LINK_PROTOCOLS.has(url.protocol);
+  } catch {
+    return false;
+  }
+}
+
+function richTextPlain(document) {
+  return (document?.blocks ?? []).map((block) => (block.runs ?? []).map((run) => run.text ?? "").join("")).join("\n");
+}
+
+function validateRichTextDocument(value, path, errors, expectedPlain) {
+  if (value === undefined) return;
+  if (!requireObject(value, path, errors)) return;
+  if (value.version !== 1) errors.push(`${path}.version must be 1`);
+  if (!Array.isArray(value.blocks) || value.blocks.length === 0) {
+    errors.push(`${path}.blocks must be a non-empty array`);
+    return;
+  }
+  for (const [blockIndex, block] of value.blocks.entries()) {
+    const blockPath = `${path}.blocks[${blockIndex}]`;
+    if (!requireObject(block, blockPath, errors)) continue;
+    if (!RICH_BLOCK_TYPES.has(block.type)) errors.push(`${blockPath}.type is invalid`);
+    if (block.align !== undefined && !TEXT_ALIGNS.has(block.align)) errors.push(`${blockPath}.align is invalid`);
+    if (!Array.isArray(block.runs) || block.runs.length === 0) {
+      errors.push(`${blockPath}.runs must be a non-empty array`);
+      continue;
+    }
+    for (const [runIndex, run] of block.runs.entries()) {
+      const runPath = `${blockPath}.runs[${runIndex}]`;
+      if (!requireObject(run, runPath, errors)) continue;
+      if (typeof run.text !== "string") errors.push(`${runPath}.text must be a string`);
+      if (run.marks !== undefined && !requireObject(run.marks, `${runPath}.marks`, errors)) continue;
+      if (run.marks?.link && !isSafeLink(run.marks.link)) errors.push(`${runPath}.marks.link must use http, https, or mailto`);
+    }
+  }
+  if (expectedPlain !== undefined && richTextPlain(value) !== expectedPlain) {
+    errors.push(`${path} plain text must match the compatibility field`);
+  }
+}
 
 function typeOf(value) {
   if (Array.isArray(value)) return "array";
@@ -82,6 +133,9 @@ function requireLinks(value, path, errors) {
     if (!requireObject(link, `${path}[${index}]`, errors)) continue;
     requireString(link.label, `${path}[${index}].label`, errors);
     requireString(link.href, `${path}[${index}].href`, errors);
+    if (typeof link.href === "string" && !isSafeLink(link.href)) {
+      errors.push(`${path}[${index}].href must use http, https, or mailto`);
+    }
   }
 }
 
@@ -135,6 +189,9 @@ export function validateDiagram(diagram) {
   }
   requireNumber(diagram.canvas.width, "diagram.canvas.width", errors, { positive: true });
   requireNumber(diagram.canvas.height, "diagram.canvas.height", errors, { positive: true });
+  if (diagram.canvas.width > 50000 || diagram.canvas.height > 50000) {
+    errors.push("diagram.canvas dimensions must not exceed 50000px");
+  }
 
   for (const key of ["layers", "nodes", "edges"]) {
     if (!Array.isArray(diagram[key])) {
@@ -142,6 +199,8 @@ export function validateDiagram(diagram) {
     }
   }
   if (errors.length) return { ok: false, errors };
+  if (diagram.nodes.length > 5000) errors.push("diagram.nodes must not exceed 5000 items");
+  if (diagram.edges.length > 10000) errors.push("diagram.edges must not exceed 10000 items");
 
   const layerIds = new Set();
   for (const [index, layer] of diagram.layers.entries()) {
@@ -171,6 +230,12 @@ export function validateDiagram(diagram) {
     requireStringArray(node.evidence, `${path}.evidence`, errors);
     requireStringArray(node.risks, `${path}.risks`, errors);
     requireLinks(node.links, `${path}.links`, errors);
+    if (node.richText !== undefined) {
+      if (requireObject(node.richText, `${path}.richText`, errors)) {
+        validateRichTextDocument(node.richText.title, `${path}.richText.title`, errors, node.title);
+        validateRichTextDocument(node.richText.subtitle, `${path}.richText.subtitle`, errors, node.subtitle ?? "");
+      }
+    }
   }
 
   for (const [index, edge] of diagram.edges.entries()) {
@@ -199,7 +264,26 @@ export function validateDiagram(diagram) {
       }
     }
     if (edge.labelAt !== undefined) validatePoint(edge.labelAt, `${path}.labelAt`, errors);
+    if (edge.routeMode !== undefined && !ROUTE_MODES.has(edge.routeMode)) {
+      errors.push(`${path}.routeMode must be auto or manual`);
+    }
+    if (edge.lockedRoute !== undefined && typeof edge.lockedRoute !== "boolean") {
+      errors.push(`${path}.lockedRoute must be a boolean`);
+    }
+    if (edge.routeStyle !== undefined && !ROUTE_STYLES.has(edge.routeStyle)) {
+      errors.push(`${path}.routeStyle must be orthogonal or curved`);
+    }
+    if (edge.curveControlPoints !== undefined) {
+      if (!Array.isArray(edge.curveControlPoints) || edge.curveControlPoints.length !== 2) {
+        errors.push(`${path}.curveControlPoints must contain two points`);
+      } else {
+        edge.curveControlPoints.forEach((point, pointIndex) => validatePoint(point, `${path}.curveControlPoints[${pointIndex}]`, errors));
+      }
+    }
   }
+
+  const assetResult = validateImageAssets(diagram);
+  if (!assetResult.ok) errors.push(...assetResult.errors.map((error) => `diagram.assets ${error}`));
 
   return { ok: errors.length === 0, errors };
 }

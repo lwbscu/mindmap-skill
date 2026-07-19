@@ -1,3 +1,20 @@
+import {
+  applyMarkToSelection,
+  createRichTextFromPlainText,
+  insertTextAtSelection,
+  marksAtSelection,
+  normalizeNodeRichText,
+  normalizeRichText,
+  richTextFromElement,
+  sliceRichTextSelection,
+  richTextToPlainText,
+  richTextToSafeHtml,
+  safeHtmlToRichText,
+  serializeRichText,
+  setBlockAlignAtSelection,
+  setBlockTypeAtSelection,
+} from "./rich-text.mjs";
+
 export const INLINE_EDIT_FIELDS = Object.freeze(["title", "subtitle"]);
 
 const DEFAULT_TITLE = "未命名";
@@ -44,25 +61,40 @@ export function normalizeInlineEditField(field, fallback = "title") {
 }
 
 export function createInlineEditDraft(source = {}, options = {}) {
+  const richText = normalizeNodeRichText(source, {
+    defaultTitle: options.defaultTitle ?? DEFAULT_TITLE,
+    defaultSubtitle: options.defaultSubtitle ?? DEFAULT_SUBTITLE,
+  });
   return {
-    title: normalizeLineEndings(source.title ?? options.defaultTitle ?? DEFAULT_TITLE),
-    subtitle: normalizeLineEndings(source.subtitle ?? options.defaultSubtitle ?? DEFAULT_SUBTITLE),
+    title: richTextToPlainText(richText.title, { singleBlock: true }) || normalizeLineEndings(source.title ?? options.defaultTitle ?? DEFAULT_TITLE),
+    subtitle: richTextToPlainText(richText.subtitle) || normalizeLineEndings(source.subtitle ?? options.defaultSubtitle ?? DEFAULT_SUBTITLE),
+    richText,
   };
 }
 
 export function normalizeInlineEditDraft(draft = {}, options = {}) {
-  const title = normalizeLineEndings(draft.title).trim();
-  const subtitle = normalizeLineEndings(draft.subtitle).trim();
+  const richText = normalizeNodeRichText(draft, {
+    defaultTitle: draft.title ?? options.fallbackTitle ?? DEFAULT_TITLE,
+    defaultSubtitle: draft.subtitle ?? DEFAULT_SUBTITLE,
+  });
+  const title = normalizeLineEndings(richTextToPlainText(richText.title, { singleBlock: true }) || draft.title).trim();
+  const subtitle = normalizeLineEndings(richTextToPlainText(richText.subtitle) || draft.subtitle).trim();
   return {
     title: title || textOf(options.fallbackTitle ?? DEFAULT_TITLE),
     subtitle,
+    richText: {
+      title: title ? richText.title : createRichTextFromPlainText(textOf(options.fallbackTitle ?? DEFAULT_TITLE), { singleBlock: true }),
+      subtitle: richText.subtitle,
+    },
   };
 }
 
 export function inlineEditDraftChanged(before = {}, after = {}, options = {}) {
   const previous = normalizeInlineEditDraft(before, options);
   const next = normalizeInlineEditDraft(after, options);
-  return previous.title !== next.title || previous.subtitle !== next.subtitle;
+  return previous.title !== next.title
+    || previous.subtitle !== next.subtitle
+    || JSON.stringify(previous.richText) !== JSON.stringify(next.richText);
 }
 
 export function selectionForText(value, selection = {}) {
@@ -178,19 +210,17 @@ export function createInlineEditor(options = {}) {
   const className = options.className || "inline-editor";
   const transformDraft = options.transformDraft || identity;
   const defaultSelection = options.selection || "all";
+  const onSelectionChange = options.onSelectionChange || noop;
+  const onDraftChange = options.onDraftChange || noop;
+  const isExternalEditorControl = options.isExternalEditorControl || (() => false);
 
   let state = null;
   let overlay = null;
   let titleInput = null;
   let subtitleInput = null;
   let blurTimer = null;
-
-  function currentDraft() {
-    return {
-      title: titleInput?.value ?? "",
-      subtitle: subtitleInput?.value ?? "",
-    };
-  }
+  let savedSelection = null;
+  let pendingMarks = { title: {}, subtitle: {} };
 
   function emitEnd(payload) {
     onActiveChange(false, payload);
@@ -204,6 +234,202 @@ export function createInlineEditor(options = {}) {
     overlay = null;
     titleInput = null;
     subtitleInput = null;
+  }
+
+  function editorForField(field) {
+    return field === "subtitle" ? subtitleInput : titleInput;
+  }
+
+  function fieldForEditor(element) {
+    return normalizeInlineEditField(element?.dataset?.inlineField, "title");
+  }
+
+  function activeEditor() {
+    const active = documentRef.activeElement;
+    if (titleInput?.contains(active) || active === titleInput) return titleInput;
+    if (subtitleInput?.contains(active) || active === subtitleInput) return subtitleInput;
+    return null;
+  }
+
+  function richTextOptionsForField(field) {
+    return { singleBlock: field === "title" };
+  }
+
+  function readRichTextFromField(field) {
+    return richTextFromElement(editorForField(field), richTextOptionsForField(field));
+  }
+
+  function currentRichText() {
+    return {
+      title: readRichTextFromField("title"),
+      subtitle: readRichTextFromField("subtitle"),
+    };
+  }
+
+  function currentDraft() {
+    const richText = currentRichText();
+    return {
+      title: richTextToPlainText(richText.title, { singleBlock: true }),
+      subtitle: richTextToPlainText(richText.subtitle),
+      richText,
+    };
+  }
+
+  function selectionRangeForEditor(editor) {
+    if (!editor) return { start: 0, end: 0 };
+    const selection = windowRef.getSelection?.();
+    if (!selection || selection.rangeCount === 0) return savedSelection?.range || { start: 0, end: 0 };
+    const range = selection.getRangeAt(0);
+    if (!editor.contains(range.startContainer) || !editor.contains(range.endContainer)) {
+      return savedSelection?.field === fieldForEditor(editor) ? savedSelection.range : { start: 0, end: 0 };
+    }
+    const beforeStart = documentRef.createRange();
+    beforeStart.selectNodeContents(editor);
+    beforeStart.setEnd(range.startContainer, range.startOffset);
+    const beforeEnd = documentRef.createRange();
+    beforeEnd.selectNodeContents(editor);
+    beforeEnd.setEnd(range.endContainer, range.endOffset);
+    const start = beforeStart.toString().length;
+    const end = beforeEnd.toString().length;
+    beforeStart.detach?.();
+    beforeEnd.detach?.();
+    return { start: Math.min(start, end), end: Math.max(start, end) };
+  }
+
+  function textNodesOf(editor) {
+    const walker = documentRef.createTreeWalker(editor, windowRef.NodeFilter?.SHOW_TEXT ?? 4);
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    return nodes;
+  }
+
+  function restoreEditorSelection(editor, range = {}) {
+    if (!editor) return false;
+    const selection = windowRef.getSelection?.();
+    if (!selection) return false;
+    const textNodes = textNodesOf(editor);
+    const locate = (offset) => {
+      let cursor = 0;
+      for (const node of textNodes) {
+        const length = node.nodeValue.length;
+        if (offset <= cursor + length) return { node, offset: clamp(offset - cursor, 0, length) };
+        cursor += length;
+      }
+      const fallback = textNodes.at(-1) || editor;
+      return { node: fallback, offset: fallback.nodeType === 3 ? fallback.nodeValue.length : fallback.childNodes.length };
+    };
+    const start = locate(finiteNumber(range.start, 0));
+    const end = locate(finiteNumber(range.end, range.start ?? 0));
+    const domRange = documentRef.createRange();
+    domRange.setStart(start.node, start.offset);
+    domRange.setEnd(end.node, end.offset);
+    selection.removeAllRanges();
+    selection.addRange(domRange);
+    return true;
+  }
+
+  function renderRichTextField(field, richText, selection = null) {
+    const editor = editorForField(field);
+    if (!editor) return false;
+    const richTextOptions = richTextOptionsForField(field);
+    editor.innerHTML = richTextToSafeHtml(normalizeRichText(richText, "", richTextOptions), richTextOptions);
+    if (selection) restoreEditorSelection(editor, selection);
+    return true;
+  }
+
+  function saveSelection() {
+    const editor = activeEditor();
+    if (!editor) return savedSelection;
+    const field = fieldForEditor(editor);
+    savedSelection = { field, range: selectionRangeForEditor(editor) };
+    return savedSelection;
+  }
+
+  function restoreSelection(selection = savedSelection) {
+    if (!selection) return false;
+    const editor = editorForField(selection.field);
+    editor?.focus({ preventScroll: true });
+    return restoreEditorSelection(editor, selection.range);
+  }
+
+  function emitSelectionChange() {
+    if (!state) return;
+    const selection = saveSelection();
+    if (!selection) return;
+    const richText = readRichTextFromField(selection.field);
+    onSelectionChange({
+      id: state.id,
+      context: state.context,
+      field: selection.field,
+      range: { ...selection.range },
+      marks: { ...marksAtSelection(richText, selection.range), ...pendingMarks[selection.field] },
+      richText,
+      api,
+    });
+  }
+
+  function emitDraftChange(reason = "input") {
+    if (!state) return;
+    onDraftChange({ id: state.id, context: state.context, draft: currentDraft(), reason, api });
+  }
+
+  function mutateActiveRichText(mutator, options = {}) {
+    const selection = options.selection || savedSelection || saveSelection();
+    if (!selection) return false;
+    const field = normalizeInlineEditField(options.field || selection.field, "title");
+    const editor = editorForField(field);
+    const range = selection.field === field ? selection.range : selectionRangeForEditor(editor);
+    const after = mutator(readRichTextFromField(field), range, field);
+    const restoreRange = options.restoreRange || range;
+    renderRichTextField(field, after, restoreRange);
+    editor?.focus({ preventScroll: true });
+    savedSelection = { field, range: restoreRange };
+    emitSelectionChange();
+    emitDraftChange(options.reason || "format");
+    return true;
+  }
+
+  function applyMark(markPatch = {}, options = {}) {
+    const selection = options.selection || savedSelection || saveSelection();
+    const field = normalizeInlineEditField(options.field || selection?.field, "title");
+    if (!selection || selection.range.start === selection.range.end) {
+      pendingMarks[field] = { ...pendingMarks[field], ...markPatch };
+      emitSelectionChange();
+      return true;
+    }
+    return mutateActiveRichText((richText, range) => applyMarkToSelection(richText, range, markPatch), {
+      ...options,
+      selection,
+      reason: "mark",
+    });
+  }
+
+  function setBlockType(type, options = {}) {
+    return mutateActiveRichText((richText, range) => setBlockTypeAtSelection(richText, range, type), {
+      ...options,
+      reason: "block-type",
+    });
+  }
+
+  function setBlockAlign(align, options = {}) {
+    return mutateActiveRichText((richText, range) => setBlockAlignAtSelection(richText, range, align), {
+      ...options,
+      reason: "block-align",
+    });
+  }
+
+  function insertPlainText(text, options = {}) {
+    const selection = options.selection || savedSelection || saveSelection();
+    if (!selection) return false;
+    const field = normalizeInlineEditField(options.field || selection.field, "title");
+    const range = selection.field === field ? selection.range : { start: 0, end: 0 };
+    const cleanText = normalizeLineEndings(text);
+    const inserted = field === "title" ? cleanText.replace(/\s*\n\s*/g, " ") : cleanText;
+    const restoreRange = { start: range.start + inserted.length, end: range.start + inserted.length };
+    return mutateActiveRichText(
+      (richText) => insertTextAtSelection(richText, range, inserted, pendingMarks[field]),
+      { ...options, selection: { field, range }, restoreRange, reason: "insert-text" },
+    );
   }
 
   function finish(type, reason = type) {
@@ -223,7 +449,10 @@ export function createInlineEditor(options = {}) {
       id: previous.id,
       context: previous.context,
       previous: previous.previous,
-      values: type === "commit" ? nextDraft : previous.previous,
+      values: type === "commit"
+        ? { title: nextDraft.title, subtitle: nextDraft.subtitle }
+        : { title: previous.previous.title, subtitle: previous.previous.subtitle },
+      richText: type === "commit" ? nextDraft.richText : previous.previous.richText,
       draft: rawDraft,
       changed,
       reason,
@@ -252,8 +481,8 @@ export function createInlineEditor(options = {}) {
     wrapper.setAttribute("role", "dialog");
     wrapper.setAttribute("aria-modal", "false");
     wrapper.innerHTML = [
-      '<textarea class="inline-editor__input inline-editor__input--title" data-inline-field="title" rows="1" spellcheck="false" aria-label="Title"></textarea>',
-      '<textarea class="inline-editor__input inline-editor__input--subtitle" data-inline-field="subtitle" rows="2" spellcheck="false" aria-label="Subtitle"></textarea>',
+      '<div class="inline-editor__input inline-editor__input--title" data-inline-field="title" contenteditable="true" spellcheck="false" role="textbox" aria-label="Title"></div>',
+      '<div class="inline-editor__input inline-editor__input--subtitle" data-inline-field="subtitle" contenteditable="true" spellcheck="false" role="textbox" aria-label="Subtitle" aria-multiline="true"></div>',
     ].join("");
 
     applyStyle(wrapper, {
@@ -269,17 +498,61 @@ export function createInlineEditor(options = {}) {
 
     titleInput = wrapper.querySelector('[data-inline-field="title"]');
     subtitleInput = wrapper.querySelector('[data-inline-field="subtitle"]');
+    titleInput.dataset.placeholder = "输入主题";
+    subtitleInput.dataset.placeholder = "输入说明";
     for (const input of [titleInput, subtitleInput]) {
       applyStyle(input, {
         width: "100%",
         minWidth: "0",
-        resize: "vertical",
         border: "0",
         outline: "0",
         background: "transparent",
         color: "#172033",
         lineHeight: "1.35",
-        overflow: "hidden",
+        overflow: "auto",
+        whiteSpace: "pre-wrap",
+        wordBreak: "break-word",
+      });
+      input.addEventListener("input", () => {
+        saveSelection();
+        emitSelectionChange();
+        emitDraftChange();
+      });
+      input.addEventListener("keyup", emitSelectionChange);
+      input.addEventListener("mouseup", emitSelectionChange);
+      input.addEventListener("focus", emitSelectionChange);
+      input.addEventListener("paste", (event) => {
+        event.preventDefault();
+        const richPayload = event.clipboardData?.getData("application/x-mindmap-rich-text");
+        if (richPayload) {
+          try {
+            const richText = serializeRichText(JSON.parse(richPayload), richTextOptionsForField(fieldForEditor(input)));
+            renderRichTextField(fieldForEditor(input), richText);
+            emitSelectionChange();
+            emitDraftChange("paste-rich-text");
+            return;
+          } catch {
+            // Use plain text fallback for malformed internal clipboard data.
+          }
+        }
+        insertPlainText(event.clipboardData?.getData("text/plain") || "");
+      });
+      input.addEventListener("copy", (event) => {
+        const field = fieldForEditor(input);
+        const selection = selectionRangeForEditor(input);
+        const sourceRichText = readRichTextFromField(field);
+        const richText = selection.start === selection.end
+          ? sourceRichText
+          : sliceRichTextSelection(sourceRichText, selection, richTextOptionsForField(field));
+        event.clipboardData?.setData("application/x-mindmap-rich-text", JSON.stringify(richText));
+        event.clipboardData?.setData("text/plain", richTextToPlainText(richText, richTextOptionsForField(field)));
+        event.preventDefault();
+      });
+      input.addEventListener("beforeinput", (event) => {
+        const field = fieldForEditor(input);
+        if (event.inputType !== "insertText" || !event.data || !Object.keys(pendingMarks[field] || {}).length) return;
+        event.preventDefault();
+        insertPlainText(event.data, { field });
       });
     }
     applyStyle(titleInput, {
@@ -292,18 +565,21 @@ export function createInlineEditor(options = {}) {
     });
 
     wrapper.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" && !event.shiftKey) {
+      const activeField = fieldForEditor(activeEditor());
+      if ((event.key === "Enter" && activeField === "title") || (event.key === "Enter" && (event.ctrlKey || event.metaKey))) {
         event.preventDefault();
         commit("enter");
       } else if (event.key === "Escape") {
         event.preventDefault();
         cancel("escape");
+      } else {
+        windowRef.requestAnimationFrame(emitSelectionChange);
       }
     });
     wrapper.addEventListener("focusout", () => {
       clearTimeout(blurTimer);
       blurTimer = setTimeout(() => {
-        if (!overlay?.contains(documentRef.activeElement)) commit("blur");
+        if (!overlay?.contains(documentRef.activeElement) && !isExternalEditorControl(documentRef.activeElement)) commit("blur");
       }, 0);
     });
     wrapper.addEventListener("pointerdown", (event) => event.stopPropagation());
@@ -336,19 +612,23 @@ export function createInlineEditor(options = {}) {
     };
 
     overlay = buildOverlay();
-    titleInput.value = values.title;
-    subtitleInput.value = values.subtitle;
     root.append(overlay);
+    renderRichTextField("title", values.richText.title);
+    renderRichTextField("subtitle", values.richText.subtitle);
     positionOverlay(context);
 
     const input = activeField === "subtitle" ? subtitleInput : titleInput;
     const selection = beginOptions.selection ?? context.selection ?? defaultSelection;
     windowRef.requestAnimationFrame(() => {
       input.focus({ preventScroll: true });
-      applyInputSelection(input, selection);
+      const text = richTextToPlainText(values.richText[activeField], richTextOptionsForField(activeField));
+      const range = selectionForText(text, selection);
+      restoreEditorSelection(input, range);
+      savedSelection = { field: activeField, range };
+      emitSelectionChange();
     });
 
-    const payload = { id, context, values, field: activeField };
+    const payload = { id, context, values: { title: values.title, subtitle: values.subtitle }, richText: values.richText, field: activeField, api };
     onActiveChange(true, payload);
     onBegin(payload);
     return payload;
@@ -399,7 +679,7 @@ export function createInlineEditor(options = {}) {
   eventTarget.addEventListener("dblclick", handleDblClick);
   windowRef.addEventListener("keydown", handleKeyDown, true);
 
-  return {
+  const api = {
     begin,
     beginFromEvent,
     beginFromSelection,
@@ -407,6 +687,29 @@ export function createInlineEditor(options = {}) {
     cancel,
     refresh,
     destroy,
+    applyMark,
+    setBlockType,
+    setBlockAlign,
+    insertPlainText,
+    saveSelection,
+    restoreSelection,
+    getSelection: () => savedSelection && { field: savedSelection.field, range: { ...savedSelection.range } },
+    getDraft: () => state ? currentDraft() : null,
+    getRichText: () => state ? currentRichText() : null,
+    focusField: (field = "title", selection = "all") => {
+      const normalizedField = normalizeInlineEditField(field, "title");
+      const editor = editorForField(normalizedField);
+      if (!editor) return false;
+      const text = richTextToPlainText(readRichTextFromField(normalizedField), richTextOptionsForField(normalizedField));
+      const range = selectionForText(text, selection);
+      editor.focus({ preventScroll: true });
+      restoreEditorSelection(editor, range);
+      savedSelection = { field: normalizedField, range };
+      emitSelectionChange();
+      return true;
+    },
+    readRichTextFromHtml: safeHtmlToRichText,
+    renderRichTextToHtml: richTextToSafeHtml,
     isActive: () => Boolean(state),
     getState: () => state && {
       id: state.id,
@@ -416,4 +719,5 @@ export function createInlineEditor(options = {}) {
       draft: currentDraft(),
     },
   };
+  return api;
 }

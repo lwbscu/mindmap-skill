@@ -13,6 +13,9 @@ import { copySubgraph, pasteSubgraph } from "../app/editor/clipboard.mjs";
 import { command, createCommandHistory } from "../app/editor/command-history.mjs";
 import { createInteractionStateMachine, InteractionState } from "../app/editor/interaction-state.mjs";
 import { computeInlineEditorPlacement, createInlineEditDraft, inlineEditDraftChanged, normalizeInlineEditDraft } from "../app/editor/inline-editing.mjs";
+import { applyMarkToSelection, createRichTextFromPlainText, isSafeLink, richTextToPlainText } from "../app/editor/rich-text.mjs";
+import { addImageAssetToDiagram, assignImageToNode, validateImageAssets } from "../app/media/image-assets.mjs";
+import { pointInRect, rectFromNode, routeDiagramEdges, segmentIntersectsRect } from "../app/routing/smart-router.mjs";
 import { selectByMarquee } from "../app/editor/selection-geometry.mjs";
 import { createNodeStylePatch, getCommonNodeStyle, normalizeNodeStyle } from "../app/editor/style-model.mjs";
 import { shortestPath, stableEdgeId } from "../app/views/graph-query.mjs";
@@ -61,6 +64,12 @@ assert.equal(statusLabel("unknown"), "待确认");
 const bad = structuredClone(diagram);
 bad.edges = [{ from: "missing", to: diagram.nodes[0].id }];
 assert.equal(validateDiagram(bad).ok, false);
+const maliciousRichText = structuredClone(diagram);
+maliciousRichText.nodes[0].richText = {
+  title: { version: 1, blocks: [{ type: "paragraph", align: "left", runs: [{ text: maliciousRichText.nodes[0].title, marks: { link: "javascript:alert(1)" } }] }] },
+  subtitle: createRichTextFromPlainText(maliciousRichText.nodes[0].subtitle || ""),
+};
+assert.equal(validateDiagram(maliciousRichText).ok, false);
 
 // Legacy v1 diagrams gain three shared-data views without changing their top-level graph.
 const migrated = ensureViews(diagram);
@@ -77,6 +86,41 @@ assert.ok(dependency.nodes.length > 0);
 assert.ok(mindmap.nodes.length > 0);
 assert.ok(Math.max(...architecture.nodes.map((node) => node.x + node.width)) < Math.max(...diagram.nodes.map((node) => node.x + node.width)), "legacy architecture view should be compacted");
 assert.equal(stableEdgeId(diagram.edges[0], 0), stableEdgeId(diagram.edges[0], 0));
+
+const rectanglesIntersect = (a, b) => a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+const portPoint = (node, side) => ({
+  x: side === "left" ? node.x : side === "right" ? node.x + node.width : node.x + node.width / 2,
+  y: side === "top" ? node.y : side === "bottom" ? node.y + node.height : node.y + node.height / 2,
+});
+const routedArchitecture = resolveView(migrated, "architecture", { routeEdges: true });
+const routedNodes = new Map(routedArchitecture.nodes.map((node) => [node.id, node]));
+for (const edge of routedArchitecture.edges) {
+  const source = routedNodes.get(edge.from);
+  const target = routedNodes.get(edge.to);
+  const points = [portPoint(source, edge.fromSide), ...(edge.waypoints || []), portPoint(target, edge.toSide)];
+  for (let index = 0; index < points.length - 1; index += 1) {
+    for (const node of routedArchitecture.nodes) {
+      if (node.id === edge.from || node.id === edge.to) continue;
+      assert.equal(segmentIntersectsRect(points[index], points[index + 1], rectFromNode(node), 1), false, `${edge.id} crosses ${node.id}`);
+    }
+  }
+}
+const labelRects = routedArchitecture.edges.filter((edge) => edge.label && edge.labelAt).map((edge) => ({
+  id: edge.id,
+  x: edge.labelAt.x - Math.min(132, Math.max(56, [...String(edge.label)].length * 10 + 22)) / 2,
+  y: edge.labelAt.y - 13,
+  width: Math.min(132, Math.max(56, [...String(edge.label)].length * 10 + 22)),
+  height: 26,
+}));
+for (const label of labelRects) {
+  assert.ok(label.x >= 0 && label.y >= 0 && label.x + label.width <= routedArchitecture.canvas.width && label.y + label.height <= routedArchitecture.canvas.height, `${label.id} label leaves canvas`);
+  for (const node of routedArchitecture.nodes) assert.equal(rectanglesIntersect(label, rectFromNode(node)), false, `${label.id} label overlaps ${node.id}`);
+}
+for (let index = 0; index < labelRects.length; index += 1) {
+  for (let other = index + 1; other < labelRects.length; other += 1) {
+    assert.equal(rectanglesIntersect(labelRects[index], labelRects[other]), false, `${labelRects[index].id} label overlaps ${labelRects[other].id}`);
+  }
+}
 
 const directEdge = diagram.edges.find((edge) => edge.from !== edge.to);
 const directPath = shortestPath(diagram, directEdge.from, directEdge.to, { direction: "outbound" });
@@ -135,9 +179,19 @@ assert.equal(machine.beginFromInput({ target: "port" }), true);
 assert.equal(machine.state, InteractionState.CONNECTING);
 
 const editDraft = createInlineEditDraft({ title: "主题", subtitle: "说明" });
-assert.deepEqual(editDraft, { title: "主题", subtitle: "说明" });
-assert.deepEqual(normalizeInlineEditDraft({ title: "  新主题  ", subtitle: "  新说明  " }), { title: "新主题", subtitle: "新说明" });
+assert.equal(editDraft.title, "主题");
+assert.equal(editDraft.subtitle, "说明");
+assert.equal(richTextToPlainText(editDraft.richText.title, { singleBlock: true }), "主题");
+const normalizedEditDraft = normalizeInlineEditDraft({ title: "  新主题  ", subtitle: "  新说明  " });
+assert.equal(normalizedEditDraft.title, "新主题");
+assert.equal(normalizedEditDraft.subtitle, "新说明");
 assert.equal(inlineEditDraftChanged(editDraft, { title: "主题 2", subtitle: "说明" }), true);
+const markedText = applyMarkToSelection(createRichTextFromPlainText("MindMap", { singleBlock: true }), { start: 0, end: 4 }, { fontWeight: "700", color: "#7c3aed" });
+assert.equal(markedText.blocks[0].runs[0].text, "Mind");
+assert.equal(markedText.blocks[0].runs[0].marks.color, "#7c3aed");
+assert.equal(markedText.blocks[0].runs[1].text, "Map");
+assert.equal(isSafeLink("javascript:alert(1)"), false);
+assert.equal(isSafeLink("https://example.com"), true);
 const editorPlacement = computeInlineEditorPlacement({ left: 900, top: 700, width: 200, height: 80 }, { left: 0, top: 0, width: 1024, height: 768 }, { minWidth: 320, minHeight: 108 });
 assert.ok(editorPlacement.left + editorPlacement.width <= 1016);
 assert.ok(editorPlacement.top + editorPlacement.minHeight <= 760);
@@ -149,6 +203,46 @@ assert.equal(getCommonNodeStyle([normalizedStyle, { ...normalizedStyle, fill: "#
 const stylePatch = createNodeStylePatch(normalizedStyle, { fontSize: 32, fill: "#eef4ff" });
 assert.equal(stylePatch.after.fontSize, 32);
 assert.equal(stylePatch.inverse().after.fontSize, 28);
+
+// Image assets are embedded, deduplicated, validated, and exported with the node.
+const sourceIconBuffer = await fs.readFile(path.join(root, "app", "assets", "mindmap.png"));
+const mediaDiagram = structuredClone(diagram);
+const mediaResult = await addImageAssetToDiagram(mediaDiagram, new Blob([sourceIconBuffer], { type: "image/png" }), { name: "mindmap.png", alt: "MindMap icon" });
+const duplicateMedia = await addImageAssetToDiagram(mediaDiagram, new Blob([sourceIconBuffer], { type: "image/png" }), { name: "duplicate.png" });
+assert.equal(duplicateMedia.assetId, mediaResult.assetId);
+assert.equal(duplicateMedia.deduped, true);
+assignImageToNode(mediaDiagram.nodes[0], mediaResult.assetId, { placement: "left", fit: "contain", alt: "MindMap icon" });
+assert.equal(validateImageAssets(mediaDiagram).ok, true);
+const missingImageAlt = structuredClone(mediaDiagram);
+missingImageAlt.nodes[0].image.alt = "";
+assert.equal(validateImageAssets(missingImageAlt).ok, false);
+assert.ok(renderSvg(mediaDiagram).includes(`href="${mediaResult.asset.dataUrl.slice(0, 32)}`));
+const unsafeMedia = structuredClone(mediaDiagram);
+unsafeMedia.assets[mediaResult.assetId].dataUrl = "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=";
+assert.equal(validateImageAssets(unsafeMedia).ok, false);
+
+// Architecture/dependency routes avoid obstacles; MindMap routes remain curved.
+const routeNodes = [
+  { id: "route-a", x: 0, y: 100, width: 120, height: 70 },
+  { id: "route-block", x: 220, y: 70, width: 150, height: 130 },
+  { id: "route-b", x: 500, y: 100, width: 120, height: 70 },
+];
+const orthogonalRoute = routeDiagramEdges({ nodes: routeNodes, edges: [{ id: "route-edge", from: "route-a", to: "route-b", label: "avoids obstacle" }], viewType: "architecture" })[0];
+assert.equal(orthogonalRoute.routeStyle, "orthogonal");
+assert.ok(orthogonalRoute.waypoints.length >= 2);
+assert.equal(orthogonalRoute.waypoints.some((point) => pointInRect(point, rectFromNode(routeNodes[1]), 0)), false);
+const routeStart = { x: routeNodes[0].x + routeNodes[0].width, y: routeNodes[0].y + routeNodes[0].height / 2 };
+const routeEnd = { x: routeNodes[2].x, y: routeNodes[2].y + routeNodes[2].height / 2 };
+const routedPoints = [routeStart, ...orthogonalRoute.waypoints, routeEnd];
+assert.equal(routedPoints.slice(0, -1).some((point, index) => segmentIntersectsRect(point, routedPoints[index + 1], rectFromNode(routeNodes[1]), 1)), false);
+assert.equal(pointInRect(orthogonalRoute.labelAt, rectFromNode(routeNodes[1]), 2), false);
+const parallelRoutes = routeDiagramEdges({ nodes: routeNodes, edges: [{ id: "parallel-a", from: "route-a", to: "route-b" }, { id: "parallel-b", from: "route-a", to: "route-b" }], viewType: "dependency" });
+assert.notDeepEqual(parallelRoutes[0].waypoints, parallelRoutes[1].waypoints);
+const curvedRoute = routeDiagramEdges({ nodes: routeNodes.filter((node) => node.id !== "route-block"), edges: [{ id: "curve-edge", from: "route-a", to: "route-b" }], viewType: "mindmap" })[0];
+assert.equal(curvedRoute.routeStyle, "curved");
+assert.equal(curvedRoute.curveControlPoints.length, 2);
+const lockedRoute = routeDiagramEdges({ nodes: routeNodes, edges: [{ id: "locked", from: "route-a", to: "route-b", routeMode: "manual", lockedRoute: true, waypoints: [{ x: 160, y: 20 }, { x: 460, y: 20 }] }], viewType: "architecture" })[0];
+assert.deepEqual(lockedRoute.waypoints, [{ x: 160, y: 20 }, { x: 460, y: 20 }]);
 
 const small = { canvas: { width: 800, height: 600 }, layers: [], nodes: diagram.nodes.slice(0, 5), edges: diagram.edges.filter((edge) => diagram.nodes.slice(0, 5).some((node) => node.id === edge.from) && diagram.nodes.slice(0, 5).some((node) => node.id === edge.to)) };
 const elkLayout = await layoutWithElk(small, "architecture");
@@ -192,7 +286,7 @@ const builtIndex = await fs.readFile(path.join(root, "dist", "app", "index.html"
 assert.ok(builtIndex.includes("./assets/app-"));
 assert.match(builtIndex, /\.\/assets\/manifest-[^"']+\.webmanifest/);
 await fs.access(path.join(root, "dist", "app", "service-worker.js"));
-const sourceIcon = await fs.readFile(path.join(root, "app", "assets", "mindmap.png"));
+const sourceIcon = sourceIconBuffer;
 const builtIcon = await fs.readFile(path.join(root, "dist", "app", "assets", "mindmap.png"));
 assert.equal(sha256(builtIcon), sha256(sourceIcon), "build must preserve the approved PNG bytes");
 const manifest = JSON.parse(await fs.readFile(path.join(root, "dist", "app", "manifest.webmanifest"), "utf8"));

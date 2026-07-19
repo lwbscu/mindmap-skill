@@ -21,6 +21,7 @@ references, and known status/relation tags.
     "background": "#ffffff"
   },
   "style": {},
+  "assets": {},
   "activeViewId": "architecture",
   "views": [],
   "savedViews": [],
@@ -70,11 +71,12 @@ When these fields are absent, the app opens the old file as a compact architectu
   "collapsedNodes": [],
   "fixedNodes": [],
   "filters": { "direction": "both", "depth": 2, "relations": [] },
-  "modeOptions": {}
+  "modeOptions": { "routing": "orthogonal" }
 }
 ```
 
 Supported `type` values are `mindmap`, `dependency`, and `architecture`. View layout and visibility are private to the view; node titles, relations, evidence, status, and other semantic fields remain shared at the top level.
+Default `modeOptions.routing` is `curved` for MindMap and `orthogonal` for dependency/architecture.
 
 ## Layers
 
@@ -150,6 +152,25 @@ public statuses can also be included in node text:
 - `unknown`: 待确认
 - `risk`: 风险
 
+### Rich Text And Images
+
+Character-level formatting is optional and versioned. Keep compatibility text synchronized:
+
+```json
+{
+  "title": "RuntimeProvider",
+  "subtitle": "CLI 参数与生命周期",
+  "richText": {
+    "title": { "version": 1, "blocks": [{ "type": "paragraph", "align": "left", "runs": [{ "text": "Runtime", "marks": { "fontWeight": "700", "color": "#2563eb" } }, { "text": "Provider", "marks": {} }] }] },
+    "subtitle": { "version": 1, "blocks": [{ "type": "paragraph", "align": "left", "runs": [{ "text": "CLI 参数与生命周期", "marks": {} }] }] }
+  }
+}
+```
+
+Supported run marks are `fontFamily`, `fontSize`, `fontWeight`, `italic`, `underline`, `strike`, `code`, `color`, `backgroundColor`, and a safe `http` / `https` / `mailto` `link`. Subtitle blocks may be paragraphs, bullet items, or ordered items. Titles stay a single paragraph.
+
+Images are content-addressed assets embedded in the diagram JSON. Nodes reference them through `image.assetId` and store `placement`, `fit`, `padding`, `opacity`, and useful `alt` text. Input images are limited to PNG, JPEG, and WebP, normalized to at most 2048px on the longest side, 4MB per asset, and 32MB per diagram. `placement` is `left`, `top`, `background`, or `node`; `fit` is `contain` or `cover`.
+
 ## Edges
 
 ```json
@@ -188,8 +209,12 @@ Useful optional fields:
   `unknown`
 - `evidence`: array of compact source strings
 - `stroke`, `strokeWidth`
+- `routeMode`: `auto` or `manual`
+- `routeStyle`: `orthogonal` or `curved`
+- `lockedRoute`: preserve a user-confirmed route during layout
+- `curveControlPoints`: exactly two points for a cubic MindMap curve
 
-Prefer explicit routes over automatic center-to-center arrows when readability matters.
+Default to `routeMode: "auto"`. Architecture and dependency views use orthogonal obstacle avoidance; MindMap uses smooth cubic curves. Do not generate large waypoint lists. Store waypoints or control points as a locked manual route only after a user intentionally adjusts it.
 
 ## Render Contract
 
@@ -197,3 +222,4 @@ Prefer explicit routes over automatic center-to-center arrows when readability m
 - All app imports and fetches must be relative-path friendly for GitHub Pages.
 - The default example lives under `examples/`.
 - Generated Pages artifacts live under `dist/` and are not committed.
+- SVG, PNG, PDF, JSON, and standalone HTML exports carry embedded images and supported rich text; Mermaid degrades images to their node title and alt text.

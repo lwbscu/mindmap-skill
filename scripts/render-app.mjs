@@ -4,6 +4,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertValidDiagram } from "../app/diagram-validator.mjs";
 import { renderStandaloneHtml, renderSvg } from "../app/render-svg.mjs";
+import { ensureViews } from "../app/views/view-model.mjs";
+import { resolveView } from "../app/views/view-resolver.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
@@ -23,10 +25,12 @@ function slugFromTitle(title) {
     .replace(/^-|-$/g, "") || "mindmap";
 }
 
-const diagram = assertValidDiagram(JSON.parse(await fs.readFile(input, "utf8")));
-const svg = renderSvg(diagram);
-const html = renderStandaloneHtml(diagram, svg);
-const slug = slugFromTitle(diagram.title);
+const sourceDiagram = assertValidDiagram(JSON.parse(await fs.readFile(input, "utf8")));
+const diagram = ensureViews(sourceDiagram);
+const blueprint = resolveView(diagram, diagram.activeViewId, { routeEdges: true });
+const svg = renderSvg(blueprint);
+const html = renderStandaloneHtml(blueprint, svg);
+const slug = slugFromTitle(blueprint.title);
 await fs.mkdir(outputDir, { recursive: true });
 const svgPath = path.join(outputDir, `${slug}.svg`);
 const htmlPath = path.join(outputDir, `${slug}.html`);

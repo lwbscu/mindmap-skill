@@ -1,4 +1,5 @@
 import { validateDiagram } from "./diagram-validator.mjs";
+import { normalizeNodeRichText } from "./editor/rich-text.mjs";
 
 const XML_ESCAPE = /[&<>"']/g;
 const XML_MAP = {
@@ -159,6 +160,14 @@ function edgePath(edge, source, target) {
   const waypoints = (edge.waypoints ?? edge.points ?? []).map(normalizePoint);
   const points = [a, ...waypoints, b];
 
+  if (edge.routeStyle === "curved" && Array.isArray(edge.curveControlPoints) && edge.curveControlPoints.length >= 2) {
+    const [first, second] = edge.curveControlPoints.map(normalizePoint);
+    return {
+      d: `M ${a.x} ${a.y} C ${first.x} ${first.y}, ${second.x} ${second.y}, ${b.x} ${b.y}`,
+      labelPoint: edge.labelAt ? normalizePoint(edge.labelAt) : { x: (a.x + 3 * first.x + 3 * second.x + b.x) / 8, y: (a.y + 3 * first.y + 3 * second.y + b.y) / 8 }
+    };
+  }
+
   if (waypoints.length > 0) {
     return {
       d: roundedPolyline(points, edge.cornerRadius ?? 18),
@@ -200,6 +209,50 @@ function textLine(text, x, y, opts = {}) {
   const size = opts.size ?? 42;
   const anchorValue = opts.anchor ?? "middle";
   return `<text x="${x}" y="${y}" text-anchor="${anchorValue}" font-size="${size}" font-weight="${weight}" fill="${esc(opts.fill ?? "#111827")}">${esc(text)}</text>`;
+}
+
+function richTextLine(richText, x, y, opts = {}) {
+  const lineHeight = opts.lineHeight ?? Math.round((opts.size ?? 16) * 1.35);
+  const width = opts.width ?? 240;
+  const baseSize = opts.size ?? 16;
+  const baseWeight = opts.weight ?? 500;
+  const baseFill = opts.fill ?? "#111827";
+  const highlights = [];
+  const lines = [];
+  for (const [blockIndex, block] of (richText?.blocks || []).entries()) {
+    const align = ["left", "center", "right"].includes(block.align) ? block.align : "left";
+    const blockX = align === "center" ? x + width / 2 : align === "right" ? x + width : x;
+    const anchorValue = align === "center" ? "middle" : align === "right" ? "end" : "start";
+    let leftCursor = x;
+    const renderedRuns = [];
+    for (const [runIndex, run] of (block.runs || []).entries()) {
+      const marks = run.marks || {};
+      const prefix = runIndex === 0 && block.type === "bullet-list-item" ? "• " : runIndex === 0 && block.type === "ordered-list-item" ? `${blockIndex + 1}. ` : "";
+      const value = `${prefix}${run.text || ""}`;
+      const size = Math.max(8, Math.min(96, Number(marks.fontSize || baseSize)));
+      if (marks.backgroundColor && align === "left" && value) {
+        const highlightWidth = estimateTextWidth(value, size) + 4;
+        highlights.push(`<rect x="${leftCursor - 2}" y="${y + blockIndex * lineHeight - size * .58}" width="${highlightWidth}" height="${Math.round(size * 1.15)}" rx="3" fill="${esc(marks.backgroundColor)}"/>`);
+        leftCursor += highlightWidth - 4;
+      } else if (align === "left") {
+        leftCursor += estimateTextWidth(value, size);
+      }
+      const decorations = [marks.underline ? "underline" : "", marks.strike ? "line-through" : ""].filter(Boolean).join(" ");
+      const attributes = [
+        `font-size="${size}"`,
+        `font-weight="${esc(marks.fontWeight || baseWeight)}"`,
+        `fill="${esc(marks.color || baseFill)}"`,
+        marks.fontFamily ? `font-family="${attr(marks.fontFamily)}"` : "",
+        marks.italic ? 'font-style="italic"' : "",
+        decorations ? `text-decoration="${decorations}"` : "",
+        marks.code ? 'font-family="ui-monospace, SFMono-Regular, Consolas, monospace"' : "",
+      ].filter(Boolean).join(" ");
+      const tspan = `<tspan ${attributes}>${esc(value)}</tspan>`;
+      renderedRuns.push(marks.link ? `<a href="${attr(marks.link)}" target="_blank" rel="noopener noreferrer">${tspan}</a>` : tspan);
+    }
+    lines.push(`<text x="${blockX}" y="${y + blockIndex * lineHeight}" text-anchor="${anchorValue}" dominant-baseline="middle">${renderedRuns.join("")}</text>`);
+  }
+  return [...highlights, ...lines].join("\n");
 }
 
 function renderLabel(text, x, y, style, opts = {}) {
@@ -260,39 +313,47 @@ function nodeIconLabel(node) {
   return "MOD";
 }
 
-function renderNode(node, style, layer) {
+function renderNode(node, style, layer, assets = {}) {
   const stroke = node.stroke
     ?? (node.kind === "data" ? style.dataStroke : node.kind === "risk" ? style.riskStroke : layer?.stroke ?? style.nodeStroke);
   const accent = node.accent ?? stroke;
   const rx = Math.min(32, node.borderRadius ?? node.radius ?? 8);
   const requestedTitleSize = node.titleSize ?? 20;
   const requestedSubtitleSize = node.subtitleSize ?? 13;
-  const subtitleLines = (Array.isArray(node.subtitle) ? node.subtitle : (node.subtitle ? [node.subtitle] : [])).slice(0, 2);
+  const richText = normalizeNodeRichText(node);
+  const asset = node.image?.assetId ? assets[node.image.assetId] : null;
+  const hasImage = Boolean(asset?.type === "image" && /^data:image\/(?:png|jpeg|webp);base64,/i.test(asset.dataUrl || ""));
+  const placement = node.kind === "image" ? "node" : node.image?.placement;
+  const imageOnly = hasImage && placement === "node";
+  const topImage = hasImage && placement === "top";
   const iconSize = Math.max(42, Math.min(56, node.height - 24));
   const iconX = node.x + 16;
   const iconY = node.y + (node.height - iconSize) / 2;
-  const textX = iconX + iconSize + 18;
+  const textX = imageOnly ? node.x + 14 : topImage ? node.x + 18 : iconX + iconSize + 18;
   const contentWidth = Math.max(80, node.x + node.width - textX - 18);
-  const titleWidth = Math.max(1, estimateTextWidth(node.title, requestedTitleSize));
-  const subtitleWidth = Math.max(1, ...subtitleLines.map((line) => estimateTextWidth(line, requestedSubtitleSize)));
-  const titleSize = Math.max(14, Math.min(requestedTitleSize, requestedTitleSize * contentWidth / titleWidth));
-  const subtitleSize = Math.max(10, Math.min(requestedSubtitleSize, requestedSubtitleSize * contentWidth / subtitleWidth));
-  const titleY = node.y + (subtitleLines.length ? node.height * 0.37 : node.height / 2);
-  const subtitleY = node.y + node.height * 0.68;
+  const titleY = topImage ? node.y + node.height * .66 : node.y + (node.subtitle ? node.height * 0.36 : node.height / 2);
+  const subtitleY = topImage ? node.y + node.height * .81 : node.y + node.height * 0.65;
+  const clipId = `image-clip-${String(node.id).replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+  const preserveAspectRatio = node.image?.fit === "cover" ? "xMidYMid slice" : "xMidYMid meet";
+  const imageOpacity = Math.max(0, Math.min(1, Number(node.image?.opacity ?? 1)));
+  const imageGeometry = placement === "top"
+    ? { x: node.x + 10, y: node.y + 10, width: node.width - 20, height: Math.max(48, node.height * .5) }
+    : placement === "background" || placement === "node"
+      ? { x: node.x + 2, y: node.y + 2, width: node.width - 4, height: node.height - 4 }
+      : { x: iconX, y: iconY, width: iconSize, height: iconSize };
+  const imageMarkup = hasImage ? [
+    `<clipPath id="${clipId}"><rect x="${imageGeometry.x}" y="${imageGeometry.y}" width="${imageGeometry.width}" height="${imageGeometry.height}" rx="${placement === "left" ? Math.min(8, iconSize / 6) : rx}"/></clipPath>`,
+    `<image href="${attr(asset.dataUrl)}" x="${imageGeometry.x}" y="${imageGeometry.y}" width="${imageGeometry.width}" height="${imageGeometry.height}" preserveAspectRatio="${preserveAspectRatio}" opacity="${placement === "background" ? Math.min(.35, imageOpacity) : imageOpacity}" clip-path="url(#${clipId})"/>`,
+  ].join("\n") : "";
   const content = [
     `<rect class="node-card" x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" rx="${rx}" fill="${esc(node.fill ?? style.nodeFill)}" stroke="${esc(stroke)}" stroke-width="${node.strokeWidth ?? 2}" filter="url(#node-shadow)"/>`,
+    imageMarkup,
     `<path class="node-accent" d="M ${node.x + rx} ${node.y + 1} H ${node.x + 8} Q ${node.x + 1} ${node.y + 1} ${node.x + 1} ${node.y + rx} V ${node.y + node.height - rx} Q ${node.x + 1} ${node.y + node.height - 1} ${node.x + 8} ${node.y + node.height - 1} H ${node.x + rx}" fill="${esc(accent)}"/>`,
-    `<rect class="node-icon" x="${iconX}" y="${iconY}" width="${iconSize}" height="${iconSize}" rx="${Math.min(8, iconSize / 6)}" fill="${esc(accent)}"/>`,
-    textLine(nodeIconLabel(node), iconX + iconSize / 2, iconY + iconSize / 2 + 1, { size: Math.max(14, iconSize * 0.3), fill: "#ffffff", weight: 850 }),
-    textLine(node.title, textX, titleY, { anchor: "start", size: titleSize, fill: node.textColor ?? node.titleFill ?? style.text, weight: node.fontWeight ?? node.titleWeight ?? 700 }),
-    subtitleLines.length ? renderMultiline(subtitleLines, textX, subtitleY, {
-      anchor: "start",
-      size: subtitleSize,
-      weight: node.subtitleWeight ?? 520,
-      fill: node.subtitleColor ?? node.subtitleFill ?? style.muted,
-      lineHeight: node.subtitleLineHeight ?? 27
-    }) : "",
-    renderStatusBadge(node, style, node.x + node.width - 10, node.y + node.height - (node.statusSize ?? 17) - 16)
+    !imageOnly && !(hasImage && placement === "left") ? `<rect class="node-icon" x="${iconX}" y="${iconY}" width="${iconSize}" height="${iconSize}" rx="${Math.min(8, iconSize / 6)}" fill="${esc(accent)}"/>` : "",
+    !imageOnly && !(hasImage && placement === "left") ? textLine(nodeIconLabel(node), iconX + iconSize / 2, iconY + iconSize / 2 + 1, { size: Math.max(14, iconSize * 0.3), fill: "#ffffff", weight: 850 }) : "",
+    !imageOnly ? richTextLine(richText.title, textX, titleY, { width: contentWidth, size: requestedTitleSize, fill: node.textColor ?? node.titleFill ?? style.text, weight: node.fontWeight ?? node.titleWeight ?? 700 }) : "",
+    !imageOnly && node.subtitle ? richTextLine(richText.subtitle, textX, subtitleY, { width: contentWidth, size: requestedSubtitleSize, weight: node.subtitleWeight ?? 520, fill: node.subtitleColor ?? node.subtitleFill ?? style.muted, lineHeight: node.subtitleLineHeight ?? 27 }) : "",
+    !imageOnly ? renderStatusBadge(node, style, node.x + node.width - 10, node.y + node.height - (node.statusSize ?? 17) - 16) : ""
   ].join("\n");
   return `<g class="mindmap-node status-${attr(normalizeStatus(node.status) || "none")}" data-node-id="${attr(node.id)}" data-layer-id="${attr(node.layer ?? "")}" tabindex="0" role="button" aria-label="${attr(node.title)}">\n${content}\n</g>`;
 }
@@ -386,7 +447,7 @@ export function renderSvg(blueprint) {
   const separators = (blueprint.separators ?? []).map((separator) => renderSeparator(separator, style, width)).join("\n");
   const layers = (blueprint.layers ?? []).map((layer) => renderLayer(layer, style)).join("\n");
   const edges = (blueprint.edges ?? []).map((edge, index) => renderEdge(edge, nodesById, style, index)).join("\n");
-  const nodes = (blueprint.nodes ?? []).map((node) => renderNode(node, style, layersById.get(node.layer))).join("\n");
+  const nodes = (blueprint.nodes ?? []).map((node) => renderNode(node, style, layersById.get(node.layer), blueprint.assets || {})).join("\n");
   const title = textLine(blueprint.title, width / 2, 86, { size: 48, weight: 850, fill: style.text });
   const subtitle = blueprint.subtitle
     ? textLine(blueprint.subtitle, width / 2, 132, { size: 25, weight: 500, fill: style.muted })

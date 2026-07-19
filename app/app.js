@@ -15,6 +15,7 @@ import {
   FolderOpen, GitBranch, Grid3X3, Group, Hand, Image as ImageIcon, Minus,
   MousePointer2, Network, PanelLeft, PanelRight, Plus, Redo2, Scan, Search,
   Square, StickyNote, Trash2, Undo2, WandSparkles, Workflow, X, Pencil,
+  List, Link2, Code2, LayoutGrid, ImagePlus, MessageSquare,
 } from "lucide";
 
 import "@antv/x6/dist/index.css";
@@ -28,6 +29,8 @@ import { renderStandaloneHtml, renderSvg } from "./render-svg.mjs";
 import { command, createCommandHistory } from "./editor/command-history.mjs";
 import { copySubgraph, pasteSubgraph } from "./editor/clipboard.mjs";
 import { createInlineEditor } from "./editor/inline-editing.mjs";
+import { loadDraft, migrateLegacyDraft, saveDraft } from "./editor/draft-store.mjs";
+import { createRichTextFromPlainText, escapeHtml, normalizeNodeRichText } from "./editor/rich-text.mjs";
 import { createInteractionStateMachine, InteractionState } from "./editor/interaction-state.mjs";
 import { boundsForItems, isSignificantDrag, selectByMarquee } from "./editor/selection-geometry.mjs";
 import { getCommonNodeStyle, normalizeNodeStyle } from "./editor/style-model.mjs";
@@ -35,6 +38,11 @@ import { activate, capture, ensureViews, stableEdgeId } from "./views/view-model
 import { filterDependencies, shortestPath } from "./views/graph-query.mjs";
 import { fallbackLayout, layoutWithElk } from "./views/layout-profiles.mjs";
 import { resolveView } from "./views/view-resolver.mjs";
+import {
+  addImageAssetToDiagram,
+  assignImageToNode,
+  removeUnreferencedImageAssets,
+} from "./media/image-assets.mjs";
 
 const DEFAULT_DIAGRAM_URL = "../examples/rpent-libero-behavior.diagram.json";
 const GRID_SIZE = 8;
@@ -43,6 +51,7 @@ const MAX_ZOOM = 4;
 const READABLE_FIT_ZOOM = 0.55;
 const ZOOM_STEP = 1.15;
 const AUTO_SAVE_DELAY = 500;
+const MAX_EXPORT_PIXELS = 64_000_000;
 const LOCAL_STORAGE_VERSION = "v2";
 const LAST_DIAGRAM_KEY = `mindmap:last-diagram:${LOCAL_STORAGE_VERSION}`;
 const LAST_FILE_KEY = `mindmap:last-file:${LOCAL_STORAGE_VERSION}`;
@@ -50,6 +59,7 @@ const CARD_WIDTH = 320;
 const CARD_HEIGHT = 96;
 const GROUP_WIDTH = 440;
 const GROUP_HEIGHT = 260;
+const NODE_CLIPBOARD_TYPE = "application/x-mindmap-nodes";
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -66,6 +76,7 @@ const searchInput = $("#search");
 const searchResults = $("#search-results");
 const zoomInput = $("#zoom-percent");
 const openFileInput = $("#open-file");
+const imageFileInput = $("#image-file");
 const commandPalette = $("#command-palette");
 const commandSearch = $("#command-search");
 const commandList = $("#command-list");
@@ -95,6 +106,10 @@ let lassoState = null;
 let viewNavigation = [];
 let selectedBeforeViewSwitch = [];
 let inlineEditor = null;
+let activeRichTextMarks = {};
+let edgeRouteSnapshot = null;
+let blueprintCache = null;
+let lastPasteEventAt = 0;
 
 const history = createCommandHistory({ limit: 100 });
 const interaction = createInteractionStateMachine();
@@ -106,6 +121,7 @@ const lucideIcons = {
   GitBranch, Grid3x3: Grid3X3, Group, Hand, Image: ImageIcon, Minus,
   MousePointer2, Network, PanelLeft, PanelRight, Plus, Redo2, Scan, Search,
   Square, StickyNote, Trash2, Undo2, WandSparkles, Workflow, X, Pencil,
+  List, Link2, Code2, LayoutGrid, ImagePlus, MessageSquare,
 };
 
 const statusLabels = {
@@ -128,6 +144,7 @@ const kindVisuals = {
   risk: { accent: "#d94b69", badge: "RISK", badgeFill: "#ffe8ed", badgeText: "#b52d4b" },
   output: { accent: "#d94b69", badge: "OUT", badgeFill: "#ffe8ed", badgeText: "#b52d4b" },
   note: { accent: "#d39a16", badge: "NOTE", badgeFill: "#fff6d8", badgeText: "#956600" },
+  image: { accent: "#7c3aed", badge: "IMG", badgeFill: "#f0e8ff", badgeText: "#6d28d9" },
   group: { accent: "#677489", badge: "GROUP", badgeFill: "#eef1f5", badgeText: "#4e596a" },
 };
 
@@ -137,6 +154,11 @@ function clone(value) {
 
 function textOf(value, fallback = "") {
   return typeof value === "string" ? value : fallback;
+}
+
+function safeCssColor(value, fallback) {
+  const color = String(value || "").trim();
+  return /^#[0-9a-f]{3,8}$/i.test(color) || /^rgba?\([\d\s,.%]+\)$/i.test(color) ? color : fallback;
 }
 
 function truncateText(value, maxLength) {
@@ -195,6 +217,7 @@ function registerShapes() {
     markup: [
       { tagName: "rect", selector: "body" },
       { tagName: "rect", selector: "accent" },
+      { tagName: "image", selector: "image" },
       { tagName: "rect", selector: "badgeBody" },
       { tagName: "text", selector: "badgeText" },
       { tagName: "text", selector: "title" },
@@ -207,6 +230,7 @@ function registerShapes() {
       text: { refX: null, refY: null },
       body: { refWidth: "100%", refHeight: "100%", rx: 8, ry: 8, fill: "#ffffff", stroke: "#c8d3e1", strokeWidth: 1.2 },
       accent: { width: 5, refHeight: "100%", rx: 4, ry: 4, fill: "#2563eb", stroke: "none" },
+      image: { x: 14, y: 18, width: 36, height: 36, opacity: 0, preserveAspectRatio: "xMidYMid meet", pointerEvents: "none" },
       badgeBody: { x: 14, y: 20, width: 36, height: 36, rx: 7, ry: 7, fill: "#eaf1ff", stroke: "none" },
       badgeText: { x: 32, y: 38, fontSize: 9, fontWeight: 800, textAnchor: "middle", textVerticalAnchor: "middle", fill: "#2456b8" },
       title: { x: 62, y: 27, fontSize: 20, fontWeight: 700, fill: "#172033", textAnchor: "start", textVerticalAnchor: "middle" },
@@ -265,6 +289,9 @@ function initGraph() {
       if (activeTool === "connect" && data.type !== "layer") {
         return { magnetConnectable: true, nodeMovable: false, edgeMovable: false, labelMovable: false, arrowheadMovable: false, vertexMovable: false };
       }
+      if (activeTool === "select" && data.type === "edge") {
+        return { edgeMovable: false, labelMovable: true, arrowheadMovable: false, vertexMovable: true };
+      }
       if (activeTool !== "select" || spaceDown || data.locked || data.type === "layer") return false;
       return { nodeMovable: true, edgeMovable: false, labelMovable: false, arrowheadMovable: false, vertexMovable: false };
     },
@@ -315,8 +342,19 @@ function activeView() {
     || diagram?.views?.[0];
 }
 
+function invalidateBlueprint() {
+  blueprintCache = null;
+}
+
 function activeBlueprint(options = {}) {
-  return resolveView(diagram, diagram?.activeViewId, options);
+  const resolveOptions = { routeEdges: true, ...options };
+  const key = JSON.stringify(resolveOptions);
+  if (blueprintCache?.diagram === diagram && blueprintCache.viewId === diagram?.activeViewId && blueprintCache.key === key) {
+    return blueprintCache.value;
+  }
+  const value = resolveView(diagram, diagram?.activeViewId, resolveOptions);
+  blueprintCache = { diagram, viewId: diagram?.activeViewId, key, value };
+  return value;
 }
 
 function relationCount(nodeId, blueprint = activeBlueprint()) {
@@ -351,6 +389,22 @@ function x6NodeConfig(node, blueprint) {
   const textX = textAlign === "center" ? width / 2 : textAlign === "right" ? width - 18 : 62;
   const statusY = height - 18;
   const textPosition = (x, y) => ({ x, y });
+  const asset = node.image?.assetId ? diagram.assets?.[node.image.assetId] : null;
+  const placement = node.kind === "image" ? "node" : node.image?.placement;
+  const hasImage = Boolean(asset?.type === "image" && asset?.dataUrl);
+  const imageOnly = hasImage && placement === "node";
+  const topImage = hasImage && placement === "top";
+  const imageAttrs = hasImage ? {
+    xlinkHref: asset.dataUrl,
+    opacity: Number(node.image?.opacity ?? 1),
+    preserveAspectRatio: node.image?.fit === "cover" ? "xMidYMid slice" : "xMidYMid meet",
+    ...(placement === "node" ? { x: 8, y: 8, width: width - 16, height: height - 16 }
+      : placement === "top" ? { x: 10, y: 10, width: width - 20, height: Math.max(48, height * .52) }
+        : placement === "background" ? { x: 2, y: 2, width: width - 4, height: height - 4, opacity: Math.min(.3, Number(node.image?.opacity ?? .22)) }
+          : { x: 14, y: 18, width: 36, height: 36 })
+  } : { opacity: 0, xlinkHref: "" };
+  const renderedTitleY = imageOnly ? height - 22 : topImage ? Math.max(72, height * .66) : 28;
+  const renderedSubtitleY = topImage ? Math.max(94, height * .78) : 54;
   return {
     id: node.id,
     shape: "mindmap-card",
@@ -362,12 +416,13 @@ function x6NodeConfig(node, blueprint) {
     attrs: {
       body: { fill: node.fill || "#ffffff", stroke: node.stroke || "#cbd5e1", strokeWidth: Number(node.strokeWidth || 1.2), rx: Number(node.borderRadius ?? 8), ry: Number(node.borderRadius ?? 8) },
       accent: { fill: node.stroke || visual.accent },
-      badgeBody: { fill: visual.badgeFill },
-      badgeText: { ...textPosition(32, 38), text: visual.badge, fill: visual.badgeText },
-      title: { ...textPosition(textX, 28), textAnchor, text: truncateText(node.title || "未命名", titleLength), fill: node.textColor || "#172033", fontSize: titleSize, fontWeight: Number(node.fontWeight || 700) },
-      subtitle: { ...textPosition(textX, 54), textAnchor, text: truncateText(node.subtitle || "未填写说明", subtitleLength), fill: node.subtitleColor || "#667085", fontSize: subtitleSize },
-      statusBody: { y: statusY - 9, width: statusWidth, fill: node.status === "risk" ? "#ffe8ed" : node.status === "unknown" ? "#fff1d5" : "#e7f8f1" },
-      statusText: { ...textPosition(62 + statusWidth / 2, statusY), text: status, fill: node.status === "risk" ? "#b52d4b" : node.status === "unknown" ? "#a56800" : "#087a5a" },
+      image: imageAttrs,
+      badgeBody: { fill: visual.badgeFill, opacity: hasImage && placement === "left" || imageOnly ? 0 : 1 },
+      badgeText: { ...textPosition(32, 38), text: visual.badge, fill: visual.badgeText, opacity: hasImage && placement === "left" || imageOnly ? 0 : 1 },
+      title: { ...textPosition(imageOnly ? 16 : textX, renderedTitleY), textAnchor: imageOnly ? "start" : textAnchor, text: truncateText(node.title || "未命名", titleLength), fill: imageOnly ? "#ffffff" : node.textColor || "#172033", fontSize: titleSize, fontWeight: Number(node.fontWeight || 700) },
+      subtitle: { ...textPosition(textX, renderedSubtitleY), textAnchor, text: truncateText(node.subtitle || "未填写说明", subtitleLength), fill: node.subtitleColor || "#667085", fontSize: subtitleSize, opacity: imageOnly ? 0 : 1 },
+      statusBody: { y: statusY - 9, width: statusWidth, fill: node.status === "risk" ? "#ffe8ed" : node.status === "unknown" ? "#fff1d5" : "#e7f8f1", opacity: imageOnly ? 0 : 1 },
+      statusText: { ...textPosition(62 + statusWidth / 2, statusY), text: status, fill: node.status === "risk" ? "#b52d4b" : node.status === "unknown" ? "#a56800" : "#087a5a", opacity: imageOnly ? 0 : 1 },
       relationCount: { ...textPosition(width - 14, statusY), text: `${relationCount(node.id, blueprint)} 条关系` },
     },
     data: { type: "node", nodeId: node.id, node: clone(node), locked: Boolean(node.locked), manual: Boolean(node.manual) },
@@ -391,19 +446,72 @@ function x6LayerConfig(layer) {
   };
 }
 
-function x6EdgeConfig(edge, index) {
+function edgePortPoint(node, side) {
+  return {
+    x: side === "left" ? node.x : side === "right" ? node.x + node.width : node.x + node.width / 2,
+    y: side === "top" ? node.y : side === "bottom" ? node.y + node.height : node.y + node.height / 2,
+  };
+}
+
+function cubicEdgePoint(source, controlA, controlB, target, t) {
+  const inverse = 1 - t;
+  return {
+    x: inverse ** 3 * source.x + 3 * inverse ** 2 * t * controlA.x + 3 * inverse * t ** 2 * controlB.x + t ** 3 * target.x,
+    y: inverse ** 3 * source.y + 3 * inverse ** 2 * t * controlA.y + 3 * inverse * t ** 2 * controlB.y + t ** 3 * target.y,
+  };
+}
+
+function x6EdgeLabelPosition(edge, blueprint) {
+  const fallback = Number(edge.labelRatio || .5);
+  if (!edge.labelAt) return fallback;
+  const source = blueprint.nodes.find((node) => node.id === edge.from);
+  const target = blueprint.nodes.find((node) => node.id === edge.to);
+  if (!source || !target) return fallback;
+  const sourcePoint = edgePortPoint(source, edge.fromSide || "right");
+  const targetPoint = edgePortPoint(target, edge.toSide || "left");
+  if (edge.routeStyle === "curved" && edge.curveControlPoints?.length === 2) {
+    const base = cubicEdgePoint(sourcePoint, edge.curveControlPoints[0], edge.curveControlPoints[1], targetPoint, .5);
+    return { distance: .5, offset: { x: edge.labelAt.x - base.x, y: edge.labelAt.y - base.y }, options: { absoluteOffset: true } };
+  }
+  const points = [sourcePoint, ...(edge.waypoints || []), targetPoint];
+  const lengths = points.slice(1).map((point, index) => Math.hypot(point.x - points[index].x, point.y - points[index].y));
+  const total = lengths.reduce((sum, length) => sum + length, 0);
+  if (!total) return fallback;
+  let best = null;
+  let traversed = 0;
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const start = points[index];
+    const end = points[index + 1];
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const squared = dx * dx + dy * dy;
+    const t = squared ? clamp(((edge.labelAt.x - start.x) * dx + (edge.labelAt.y - start.y) * dy) / squared, 0, 1) : 0;
+    const projection = { x: start.x + dx * t, y: start.y + dy * t };
+    const distance = Math.hypot(edge.labelAt.x - projection.x, edge.labelAt.y - projection.y);
+    if (!best || distance < best.distance) best = { distance, projection, pathDistance: traversed + lengths[index] * t };
+    traversed += lengths[index];
+  }
+  return {
+    distance: clamp(best.pathDistance / total, 0, 1),
+    offset: { x: edge.labelAt.x - best.projection.x, y: edge.labelAt.y - best.projection.y },
+    options: { absoluteOffset: true },
+  };
+}
+
+function x6EdgeConfig(edge, index, blueprint) {
   const edgeId = stableEdgeId(edge, index);
   const label = edge.label || edge.relation || "";
   const sourceSide = edge.fromSide || "right";
   const targetSide = edge.toSide || "left";
+  const curved = edge.routeStyle === "curved" || Array.isArray(edge.curveControlPoints);
   return {
     id: edgeId,
     shape: "edge",
     source: { cell: edge.from, port: sourceSide },
     target: { cell: edge.to, port: targetSide },
-    vertices: Array.isArray(edge.waypoints) ? edge.waypoints : [],
-    router: { name: "orth", args: { padding: 12 } },
-    connector: { name: "rounded", args: { radius: 12 } },
+    vertices: curved ? (edge.curveControlPoints || []) : (Array.isArray(edge.waypoints) ? edge.waypoints : []),
+    router: { name: "normal" },
+    connector: curved ? { name: "smooth" } : { name: "rounded", args: { radius: 12 } },
     zIndex: 4,
     attrs: {
       line: {
@@ -415,7 +523,7 @@ function x6EdgeConfig(edge, index) {
       },
     },
     labels: label ? [{
-      position: Number(edge.labelRatio || .5),
+      position: x6EdgeLabelPosition(edge, blueprint),
       attrs: {
         body: { ref: "label", refWidth: "120%", refHeight: "150%", refX: "-10%", refY: "-25%", fill: "#ffffff", stroke: "#d9e0e9", strokeWidth: .7, rx: 3, ry: 3 },
         label: { text: label, fill: "#4e5c70", fontSize: clamp(Number(edge.labelSize || 10), 9, 16), fontWeight: 550 },
@@ -423,6 +531,55 @@ function x6EdgeConfig(edge, index) {
     }] : [],
     data: { type: "edge", edgeId, edge: { ...clone(edge), id: edgeId }, manual: Boolean(edge.manual) },
   };
+}
+
+function applyRichTextToTextElement(element, richText, options = {}) {
+  if (!element || !richText?.blocks?.length) return;
+  const namespace = "http://www.w3.org/2000/svg";
+  const x = element.getAttribute("x") || "0";
+  const defaultSize = Number(options.fontSize || element.getAttribute("font-size") || 14);
+  element.textContent = "";
+  richText.blocks.forEach((block, blockIndex) => {
+    const runs = block.runs?.length ? block.runs : [{ text: "", marks: {} }];
+    runs.forEach((run, runIndex) => {
+      const tspan = document.createElementNS(namespace, "tspan");
+      const prefix = runIndex === 0 && block.type === "bullet-list-item"
+        ? "• "
+        : runIndex === 0 && block.type === "ordered-list-item" ? `${blockIndex + 1}. ` : "";
+      tspan.textContent = `${prefix}${run.text || ""}`;
+      if (runIndex === 0) {
+        tspan.setAttribute("x", x);
+        if (blockIndex > 0) tspan.setAttribute("dy", `${Math.round(defaultSize * 1.35)}px`);
+      }
+      const marks = run.marks || {};
+      if (marks.fontFamily) tspan.setAttribute("font-family", marks.fontFamily);
+      if (marks.fontSize) tspan.setAttribute("font-size", String(marks.fontSize));
+      if (marks.fontWeight) tspan.setAttribute("font-weight", String(marks.fontWeight));
+      if (marks.italic) tspan.setAttribute("font-style", "italic");
+      if (marks.color) tspan.setAttribute("fill", marks.color);
+      const decorations = [marks.underline ? "underline" : "", marks.strike ? "line-through" : ""].filter(Boolean);
+      if (decorations.length) tspan.setAttribute("text-decoration", decorations.join(" "));
+      if (marks.code) {
+        tspan.setAttribute("font-family", "ui-monospace, SFMono-Regular, Consolas, monospace");
+        tspan.setAttribute("font-weight", "600");
+      }
+      element.append(tspan);
+    });
+  });
+}
+
+function renderNodeRichText(nodeId, richTextOverride = null) {
+  const node = semanticNode(nodeId);
+  const cell = graph?.getCellById(nodeId);
+  const view = cell ? graph.findViewByCell(cell) : null;
+  if (!node || !view || node.kind === "group" || node.kind === "image") return;
+  const richText = richTextOverride || normalizeNodeRichText(node);
+  applyRichTextToTextElement(view.findOne("title"), richText.title, { fontSize: node.titleSize || 20 });
+  applyRichTextToTextElement(view.findOne("subtitle"), richText.subtitle, { fontSize: node.subtitleSize || 13 });
+}
+
+function renderCanvasRichText() {
+  for (const node of diagram?.nodes || []) renderNodeRichText(node.id);
 }
 
 function renderGraph(options = {}) {
@@ -445,7 +602,7 @@ function renderGraph(options = {}) {
     nodeCells.set(node.id, cell);
   }
   for (const edge of blueprint.edges || []) {
-    if (nodeCells.has(edge.from) && nodeCells.has(edge.to)) graph.addEdge(x6EdgeConfig(edge, blueprint.edges.indexOf(edge)), { appRender: true });
+    if (nodeCells.has(edge.from) && nodeCells.has(edge.to)) graph.addEdge(x6EdgeConfig(edge, blueprint.edges.indexOf(edge), blueprint), { appRender: true });
   }
 
   for (const node of blueprint.nodes || []) {
@@ -464,12 +621,11 @@ function renderGraph(options = {}) {
   suppressGraphEvents = false;
 
   updatePageChrome();
-  renderSidebar();
   renderSavedViews();
-  renderInspector();
   updateSelectionUI();
   updateZoomUI();
   $("#canvas-empty").hidden = (blueprint.nodes || []).length > 0;
+  requestAnimationFrame(renderCanvasRichText);
 }
 
 function updatePageChrome() {
@@ -582,7 +738,17 @@ function inlineContext(nodeId) {
   const view = cell ? graph.findViewByCell(cell) : null;
   const anchorRect = view?.container?.getBoundingClientRect?.();
   if (!node || !cell || !anchorRect) return null;
-  return { id: nodeId, nodeId, node, values: { title: node.title || "未命名", subtitle: node.subtitle || "" }, anchorRect };
+  return {
+    id: nodeId,
+    nodeId,
+    node,
+    values: {
+      title: node.title || "未命名",
+      subtitle: node.subtitle || "",
+      richText: normalizeNodeRichText(node),
+    },
+    anchorRect,
+  };
 }
 
 function beginNodeEdit(nodeId, options = {}) {
@@ -604,14 +770,26 @@ function initInlineEditing() {
     placement: { minWidth: 320, maxWidth: 620, minHeight: 108 },
     transformDraft: (draft) => ({ ...draft, title: String(draft.title || "").replace(/\s*\n\s*/g, " ") }),
     shouldStartFromKeyboard: () => false,
-    onActiveChange: (active) => appShell.classList.toggle("is-inline-editing", active),
-    onCommit: ({ id, values, changed }) => {
+    isExternalEditorControl: (element) => Boolean(element?.closest?.("#selection-toolbar")),
+    onSelectionChange: ({ marks }) => {
+      activeRichTextMarks = marks || {};
+      updateRichTextToolbar();
+      positionSelectionToolbar();
+    },
+    onDraftChange: ({ id, draft }) => renderNodeRichText(id, draft.richText),
+    onActiveChange: (active) => {
+      appShell.classList.toggle("is-inline-editing", active);
+      if (!active) activeRichTextMarks = {};
+      updateSelectionUI();
+    },
+    onCommit: ({ id, values, richText, changed }) => {
       if (!changed) return;
       runMutation("编辑主题文字", (next) => {
         const node = next.nodes.find((item) => item.id === id);
         if (!node) return;
         node.title = values.title;
         node.subtitle = values.subtitle;
+        node.richText = richText;
         const size = preferredEditedNodeSize(node, values);
         Object.assign(node, size);
         const view = next.views.find((item) => item.id === next.activeViewId);
@@ -621,12 +799,27 @@ function initInlineEditing() {
   });
 }
 
+function updateRichTextToolbar() {
+  if (!inlineEditor?.isActive()) return;
+  for (const button of $$('[data-rich-mark]')) {
+    const key = button.dataset.richMark;
+    const active = key === "fontWeight" ? Number(activeRichTextMarks.fontWeight || 400) >= 700 : Boolean(activeRichTextMarks[key]);
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-pressed", String(active));
+  }
+  if (activeRichTextMarks.fontFamily) $("#quick-font-family").value = activeRichTextMarks.fontFamily;
+  if (activeRichTextMarks.fontSize) $("#quick-title-size").value = String(activeRichTextMarks.fontSize);
+  if (activeRichTextMarks.color) $("#quick-text-color").value = activeRichTextMarks.color;
+  if (activeRichTextMarks.backgroundColor) $("#quick-highlight-color").value = activeRichTextMarks.backgroundColor;
+}
+
 function currentViewIndex() {
   return diagram.views.findIndex((view) => view.id === diagram.activeViewId);
 }
 
 function syncGraphLayoutToDiagram() {
   if (!diagram || !graph) return;
+  invalidateBlueprint();
   const index = currentViewIndex();
   if (index < 0) return;
   const view = diagram.views[index];
@@ -656,7 +849,14 @@ function syncGraphLayoutToDiagram() {
     const data = cell.getData() || {};
     if (data.type !== "edge") continue;
     const vertices = cell.getVertices().map(({ x, y }) => ({ x, y }));
-    view.layout.edges[data.edgeId] = { ...(view.layout.edges[data.edgeId] || {}), waypoints: vertices };
+    const curved = data.edge?.routeStyle === "curved";
+    view.layout.edges[data.edgeId] = {
+      ...(view.layout.edges[data.edgeId] || {}),
+      ...(curved ? { curveControlPoints: vertices, waypoints: [] } : { waypoints: vertices, curveControlPoints: undefined }),
+      routeMode: data.manualRoute ? "manual" : (view.layout.edges[data.edgeId]?.routeMode || "auto"),
+      routeStyle: curved ? "curved" : "orthogonal",
+      lockedRoute: Boolean(view.layout.edges[data.edgeId]?.lockedRoute),
+    };
   }
   view.camera = currentCamera();
 }
@@ -727,10 +927,9 @@ function redo() {
 function scheduleAutosave() {
   $("#save-status").textContent = "有未保存修改";
   clearTimeout(autosaveTimer);
-  autosaveTimer = setTimeout(() => {
+  autosaveTimer = setTimeout(async () => {
     try {
-      localStorage.setItem(LAST_DIAGRAM_KEY, JSON.stringify(diagram));
-      localStorage.setItem(LAST_FILE_KEY, currentFilePath || "");
+      await saveDraft(clone(diagram), currentFilePath || "");
       $("#save-status").textContent = currentFilePath ? "已自动保存视图" : "已保存到本地";
     } catch {
       $("#save-status").textContent = "自动保存失败";
@@ -763,7 +962,8 @@ function renderSidebar() {
       button.dataset.nodeId = node.id;
       button.classList.toggle("is-active", selected.has(node.id));
       const visual = visualFor(node);
-      button.innerHTML = `<span class="node-dot" style="background:${node.stroke || visual.accent}"></span><span class="node-list-copy"><span class="node-list-title"></span><span class="node-list-subtitle"></span></span><span class="relation-count">${relationCount(node.id, blueprint)}</span>`;
+      button.innerHTML = `<span class="node-dot"></span><span class="node-list-copy"><span class="node-list-title"></span><span class="node-list-subtitle"></span></span><span class="relation-count">${relationCount(node.id, blueprint)}</span>`;
+      $(".node-dot", button).style.background = safeCssColor(node.stroke, visual.accent);
       $(".node-list-title", button).textContent = node.title || "未命名";
       $(".node-list-subtitle", button).textContent = node.subtitle || statusLabels[node.status] || "模块";
       button.addEventListener("click", (event) => selectNode(node.id, { additive: event.shiftKey || event.ctrlKey || event.metaKey, center: true }));
@@ -782,7 +982,10 @@ function renderSidebar() {
     button.type = "button";
     button.dataset.layerId = layer.id;
     button.classList.toggle("is-hidden", hidden.has(layer.id));
-    button.innerHTML = `<span class="layer-swatch" style="background:${layer.fill || "#f7fafc"};border-color:${layer.stroke || "#a9bfd7"}"></span><span class="node-list-copy"><span class="node-list-title"></span><span class="node-list-subtitle"></span></span><span class="layer-actions"></span>`;
+    button.innerHTML = `<span class="layer-swatch"></span><span class="node-list-copy"><span class="node-list-title"></span><span class="node-list-subtitle"></span></span><span class="layer-actions"></span>`;
+    const swatch = $(".layer-swatch", button);
+    swatch.style.background = safeCssColor(layer.fill, "#f7fafc");
+    swatch.style.borderColor = safeCssColor(layer.stroke, "#a9bfd7");
     $(".node-list-title", button).textContent = layer.label || layer.id;
     $(".node-list-subtitle", button).textContent = `${diagram.nodes.filter((node) => node.layer === layer.id).length} 个节点`;
     button.addEventListener("click", () => toggleLayer(layer.id));
@@ -815,10 +1018,12 @@ function inspectorNodeIds() {
 
 function field(label, key, value, options = {}) {
   const type = options.type || "text";
-  const nodeId = options.nodeId || "";
-  if (type === "textarea") return `<label class="field"><span>${label}</span><textarea data-node-field="${key}" data-node-id="${nodeId}"></textarea></label>`;
-  if (type === "select") return `<label class="field"><span>${label}</span><select data-node-field="${key}" data-node-id="${nodeId}">${options.items.map(([itemValue, itemLabel]) => `<option value="${itemValue}"${String(value) === String(itemValue) ? " selected" : ""}>${itemLabel}</option>`).join("")}</select></label>`;
-  return `<label class="field ${type === "color" ? "color-field" : ""}"><span>${label}</span><input type="${type}" value="${String(value ?? "").replace(/"/g, "&quot;")}" data-node-field="${key}" data-node-id="${nodeId}"></label>`;
+  const nodeId = escapeHtml(options.nodeId || "");
+  const safeLabel = escapeHtml(label);
+  const safeKey = escapeHtml(key);
+  if (type === "textarea") return `<label class="field"><span>${safeLabel}</span><textarea data-node-field="${safeKey}" data-node-id="${nodeId}"></textarea></label>`;
+  if (type === "select") return `<label class="field"><span>${safeLabel}</span><select data-node-field="${safeKey}" data-node-id="${nodeId}">${options.items.map(([itemValue, itemLabel]) => `<option value="${escapeHtml(itemValue)}"${String(value) === String(itemValue) ? " selected" : ""}>${escapeHtml(itemLabel)}</option>`).join("")}</select></label>`;
+  return `<label class="field ${type === "color" ? "color-field" : ""}"><span>${safeLabel}</span><input type="${escapeHtml(type)}" value="${escapeHtml(value ?? "")}" data-node-field="${safeKey}" data-node-id="${nodeId}"></label>`;
 }
 
 function setTextareaValues(root, values) {
@@ -833,16 +1038,16 @@ function renderViewInspector() {
   const blueprint = activeBlueprint();
   const relationTypes = [...new Set(diagram.edges.map((edge) => edge.relation).filter(Boolean))];
   if (activeInspectorTab === "relations") {
-    inspectorContent.innerHTML = `<section class="inspector-section"><h3>关系概览</h3><div class="metric-grid"><div class="metric"><b>${blueprint.edges.length}</b><span>当前可见</span></div><div class="metric"><b>${diagram.edges.length - blueprint.edges.length}</b><span>被筛选</span></div></div></section>${relationTypes.map((relation) => `<div class="relation-item"><span class="relation-direction">${relation}</span><strong>${diagram.edges.filter((edge) => edge.relation === relation).length} 条关系</strong></div>`).join("") || '<div class="empty-copy">当前没有关系类型。</div>'}`;
+    inspectorContent.innerHTML = `<section class="inspector-section"><h3>关系概览</h3><div class="metric-grid"><div class="metric"><b>${blueprint.edges.length}</b><span>当前可见</span></div><div class="metric"><b>${diagram.edges.length - blueprint.edges.length}</b><span>被筛选</span></div></div></section>${relationTypes.map((relation) => `<div class="relation-item"><span class="relation-direction">${escapeHtml(relation)}</span><strong>${diagram.edges.filter((edge) => edge.relation === relation).length} 条关系</strong></div>`).join("") || '<div class="empty-copy">当前没有关系类型。</div>'}`;
     return;
   }
   if (activeInspectorTab === "evidence") {
     const evidence = [...new Set([...diagram.nodes.flatMap((node) => node.evidence || []), ...diagram.edges.flatMap((edge) => edge.evidence || [])])];
-    inspectorContent.innerHTML = `<section class="inspector-section"><h3>证据覆盖</h3>${evidence.map((item) => `<div class="evidence-item"><strong>来源</strong><span>${String(item).replace(/</g, "&lt;")}</span></div>`).join("") || '<div class="empty-copy">当前图表没有证据条目。</div>'}</section>`;
+    inspectorContent.innerHTML = `<section class="inspector-section"><h3>证据覆盖</h3>${evidence.map((item) => `<div class="evidence-item"><strong>来源</strong><span>${escapeHtml(item)}</span></div>`).join("") || '<div class="empty-copy">当前图表没有证据条目。</div>'}</section>`;
     return;
   }
   if (activeInspectorTab === "history") {
-    inspectorContent.innerHTML = `<section class="inspector-section"><h3>操作历史</h3>${[...history.undoStack].reverse().map((item, index) => `<div class="history-item"><strong>${index === 0 ? "当前 · " : ""}${item.label || "画布操作"}</strong><span>可撤销</span></div>`).join("") || '<div class="empty-copy">本次会话还没有画布修改。</div>'}</section>`;
+    inspectorContent.innerHTML = `<section class="inspector-section"><h3>操作历史</h3>${[...history.undoStack].reverse().map((item, index) => `<div class="history-item"><strong>${index === 0 ? "当前 · " : ""}${escapeHtml(item.label || "画布操作")}</strong><span>可撤销</span></div>`).join("") || '<div class="empty-copy">本次会话还没有画布修改。</div>'}</section>`;
     return;
   }
   if (activeInspectorTab === "style") {
@@ -871,13 +1076,13 @@ function renderNodeInspector(nodes) {
   if (activeInspectorTab === "relations") {
     const ids = new Set(nodes.map((node) => node.id));
     const related = diagram.edges.filter((edge) => ids.has(edge.from) || ids.has(edge.to));
-    inspectorContent.innerHTML = `<section class="inspector-section"><h3>关系</h3>${related.map((edge, index) => `<button class="relation-item" type="button" data-edge-id="${stableEdgeId(edge, diagram.edges.indexOf(edge))}"><span class="relation-direction">${edge.relation || "关系"}</span><strong>${semanticNode(edge.from)?.title || edge.from} → ${semanticNode(edge.to)?.title || edge.to}</strong><span>${edge.label || "点击在画布中定位"}</span></button>`).join("") || '<div class="empty-copy">选中节点没有可见关系。</div>'}</section>`;
+    inspectorContent.innerHTML = `<section class="inspector-section"><h3>关系</h3>${related.map((edge) => `<button class="relation-item" type="button" data-edge-id="${escapeHtml(stableEdgeId(edge, diagram.edges.indexOf(edge)))}"><span class="relation-direction">${escapeHtml(edge.relation || "关系")}</span><strong>${escapeHtml(semanticNode(edge.from)?.title || edge.from)} → ${escapeHtml(semanticNode(edge.to)?.title || edge.to)}</strong><span>${escapeHtml(edge.label || "点击在画布中定位")}</span></button>`).join("") || '<div class="empty-copy">选中节点没有可见关系。</div>'}</section>`;
     return;
   }
   if (activeInspectorTab === "evidence") {
     const evidence = [...new Set(nodes.flatMap((node) => node.evidence || []))];
     const risks = [...new Set(nodes.flatMap((node) => node.risks || []))];
-    inspectorContent.innerHTML = `<section class="inspector-section"><h3>源码与文档证据</h3>${evidence.map((item) => `<div class="evidence-item"><strong>来源</strong><span>${String(item).replace(/</g,"&lt;")}</span></div>`).join("") || '<div class="empty-copy">当前节点没有证据条目。</div>'}</section><section class="inspector-section"><h3>风险与待确认</h3>${risks.map((item) => `<div class="evidence-item"><strong>风险</strong><span>${String(item).replace(/</g,"&lt;")}</span></div>`).join("") || '<div class="empty-copy">当前节点没有风险条目。</div>'}</section>`;
+    inspectorContent.innerHTML = `<section class="inspector-section"><h3>源码与文档证据</h3>${evidence.map((item) => `<div class="evidence-item"><strong>来源</strong><span>${escapeHtml(item)}</span></div>`).join("") || '<div class="empty-copy">当前节点没有证据条目。</div>'}</section><section class="inspector-section"><h3>风险与待确认</h3>${risks.map((item) => `<div class="evidence-item"><strong>风险</strong><span>${escapeHtml(item)}</span></div>`).join("") || '<div class="empty-copy">当前节点没有风险条目。</div>'}</section>`;
     return;
   }
   if (activeInspectorTab === "style") {
@@ -886,25 +1091,28 @@ function renderNodeInspector(nodes) {
   }
   if (activeInspectorTab === "history") return renderViewInspector();
 
-  inspectorContent.innerHTML = `<section class="inspector-section"><h3>属性</h3>${field("名称", "title", primary.title, { nodeId: primary.id })}${field("职责说明", "subtitle", primary.subtitle || "", { type: "textarea", nodeId: primary.id })}<div class="field-row">${field("类型", "kind", primary.kind || "module", { type: "select", nodeId: primary.id, items: Object.keys(kindVisuals).map((kind) => [kind, kind]) })}${field("状态", "status", primary.status || "implemented", { type: "select", nodeId: primary.id, items: Object.entries(statusLabels).map(([value,label]) => [value,label]) })}</div>${field("所属图层", "layer", primary.layer || "", { type: "select", nodeId: primary.id, items: [["","未分组"], ...diagram.layers.map((layer) => [layer.id,layer.label || layer.id])] })}</section><section class="inspector-section"><h3>位置</h3><div class="field-row">${field("X", "x", Math.round(graph.getCellById(primary.id)?.position().x || primary.x || 0), { type: "number", nodeId: primary.id })}${field("Y", "y", Math.round(graph.getCellById(primary.id)?.position().y || primary.y || 0), { type: "number", nodeId: primary.id })}</div></section><div class="inspector-actions"><button type="button" data-node-action="duplicate">复制</button><button type="button" data-node-action="focus">聚焦</button><button class="danger-button" type="button" data-node-action="delete">删除/隐藏</button></div>`;
+  const imageControls = primary.image
+    ? `<section class="inspector-section"><h3>图片</h3>${field("替代文本", "image:alt", primary.image.alt || "", { nodeId: primary.id })}<div class="field-row">${field("布局", "image:placement", primary.image.placement || "left", { type: "select", nodeId: primary.id, items: [["left","左侧缩略图"],["top","顶部图片区"],["background","背景图"],["node","纯图片"]] })}${field("适配", "image:fit", primary.image.fit || "contain", { type: "select", nodeId: primary.id, items: [["contain","完整显示"],["cover","铺满裁切"]] })}</div>${field("透明度", "image:opacity", primary.image.opacity ?? 1, { type: "number", nodeId: primary.id })}<div class="inspector-actions"><button type="button" data-node-action="image">替换图片</button><button class="danger-button" type="button" data-node-action="image-remove">删除图片</button></div></section>`
+    : '<section class="inspector-section"><h3>图片</h3><div class="inspector-actions"><button type="button" data-node-action="image">上传或粘贴图片</button></div></section>';
+  inspectorContent.innerHTML = `<section class="inspector-section"><h3>属性</h3>${field("名称", "title", primary.title, { nodeId: primary.id })}${field("职责说明", "subtitle", primary.subtitle || "", { type: "textarea", nodeId: primary.id })}<div class="field-row">${field("类型", "kind", primary.kind || "module", { type: "select", nodeId: primary.id, items: Object.keys(kindVisuals).map((kind) => [kind, kind]) })}${field("状态", "status", primary.status || "implemented", { type: "select", nodeId: primary.id, items: Object.entries(statusLabels).map(([value,label]) => [value,label]) })}</div>${field("所属图层", "layer", primary.layer || "", { type: "select", nodeId: primary.id, items: [["","未分组"], ...diagram.layers.map((layer) => [layer.id,layer.label || layer.id])] })}</section>${imageControls}<section class="inspector-section"><h3>位置</h3><div class="field-row">${field("X", "x", Math.round(graph.getCellById(primary.id)?.position().x || primary.x || 0), { type: "number", nodeId: primary.id })}${field("Y", "y", Math.round(graph.getCellById(primary.id)?.position().y || primary.y || 0), { type: "number", nodeId: primary.id })}</div></section><div class="inspector-actions"><button type="button" data-node-action="duplicate">复制</button><button type="button" data-node-action="focus">聚焦</button><button class="danger-button" type="button" data-node-action="delete">删除/隐藏</button></div>`;
   setTextareaValues(inspectorContent, [[`textarea[data-node-field="subtitle"]`, primary.subtitle || ""]]);
 }
 
 function renderEdgeInspector(cell) {
   const data = cell.getData();
-  const edge = semanticEdge(data.edgeId) || data.edge;
+  const edge = { ...(semanticEdge(data.edgeId) || {}), ...(data.edge || {}) };
   $("#inspector-kicker").textContent = edge.manual ? "手动关系" : "分析关系";
   $("#inspector-title").textContent = edge.label || edge.relation || "关系";
   $("#inspector-subtitle").textContent = `${semanticNode(edge.from)?.title || edge.from} → ${semanticNode(edge.to)?.title || edge.to}`;
   if (activeInspectorTab === "evidence") {
-    inspectorContent.innerHTML = `<section class="inspector-section"><h3>关系证据</h3>${(edge.evidence || []).map((item) => `<div class="evidence-item"><strong>来源</strong><span>${String(item).replace(/</g,"&lt;")}</span></div>`).join("") || '<div class="empty-copy">当前关系没有证据条目。</div>'}</section>`;
+    inspectorContent.innerHTML = `<section class="inspector-section"><h3>关系证据</h3>${(edge.evidence || []).map((item) => `<div class="evidence-item"><strong>来源</strong><span>${escapeHtml(item)}</span></div>`).join("") || '<div class="empty-copy">当前关系没有证据条目。</div>'}</section>`;
     return;
   }
   if (activeInspectorTab === "style") {
     inspectorContent.innerHTML = `<section class="inspector-section"><h3>关系样式</h3><div class="field-row">${field("颜色", "edge:stroke", edge.stroke || "#8aa0bb", { type: "color" })}${field("线宽", "edge:strokeWidth", edge.strokeWidth || 1.5, { type: "number" })}</div></section>`;
     return;
   }
-  inspectorContent.innerHTML = `<section class="inspector-section"><h3>关系属性</h3>${field("标签", "edge:label", edge.label || "")}${field("关系类型", "edge:relation", edge.relation || "depends_on", { type: "select", items: [["depends_on","depends_on"],["calls","calls"],["routes","routes"],["reads","reads"],["writes","writes"],["evaluates","evaluates"],["guards","guards"],["unknown","unknown"]] })}<div class="inspector-actions"><button type="button" data-edge-action="focus">聚焦两端</button><button type="button" data-edge-action="hide">隐藏关系</button>${edge.manual ? '<button class="danger-button" type="button" data-edge-action="delete">删除关系</button>' : '<button type="button" data-edge-action="flag">标记错误</button>'}</div></section>`;
+  inspectorContent.innerHTML = `<section class="inspector-section"><h3>关系属性</h3>${field("标签", "edge:label", edge.label || "")}${field("关系类型", "edge:relation", edge.relation || "depends_on", { type: "select", items: [["depends_on","depends_on"],["calls","calls"],["routes","routes"],["reads","reads"],["writes","writes"],["evaluates","evaluates"],["guards","guards"],["unknown","unknown"]] })}<div class="inspector-actions"><button type="button" data-edge-action="focus">聚焦两端</button><button type="button" data-edge-action="route">${edge.lockedRoute || edge.routeMode === "manual" ? "恢复自动路由" : "锁定当前路线"}</button><button type="button" data-edge-action="hide">隐藏关系</button>${edge.manual ? '<button class="danger-button" type="button" data-edge-action="delete">删除关系</button>' : '<button type="button" data-edge-action="flag">标记错误</button>'}</div></section>`;
 }
 
 function renderInspector() {
@@ -954,9 +1162,12 @@ function updateQuickStyleControls() {
 
 function positionSelectionToolbar() {
   if (selectionToolbar.hidden || !graph) return;
-  const elements = selectedSemanticNodeIds().map((id) => graph.findViewByCell(graph.getCellById(id))?.container).filter(Boolean);
-  if (!elements.length) return;
   const shell = graphShell.getBoundingClientRect();
+  const inlineOverlay = inlineEditor?.isActive() ? $(".inline-editor") : null;
+  const elements = inlineOverlay
+    ? [inlineOverlay]
+    : selectedSemanticNodeIds().map((id) => graph.findViewByCell(graph.getCellById(id))?.container).filter(Boolean);
+  if (!elements.length) return;
   const rects = elements.map((element) => element.getBoundingClientRect());
   const left = Math.min(...rects.map((rect) => rect.left));
   const right = Math.max(...rects.map((rect) => rect.right));
@@ -966,9 +1177,9 @@ function positionSelectionToolbar() {
   const toolbarHeight = selectionToolbar.offsetHeight || 42;
   const center = (left + right) / 2 - shell.left;
   const x = clamp(center, toolbarWidth / 2 + 8, shell.width - toolbarWidth / 2 - 8);
-  const above = top - shell.top - toolbarHeight - 10;
+  const above = top - shell.top - toolbarHeight - 8;
   selectionToolbar.style.left = `${Math.round(x)}px`;
-  selectionToolbar.style.top = `${Math.round(above >= 8 ? above : bottom - shell.top + 10)}px`;
+  selectionToolbar.style.top = `${Math.round(above >= 8 ? above : Math.min(shell.height - toolbarHeight - 8, bottom - shell.top + 8))}px`;
 }
 
 function updateZoomUI() {
@@ -1085,7 +1296,19 @@ async function autoLayout() {
     const nextView = nextDiagram.views[index];
     nextView.layout.nodes = Object.fromEntries(laidOut.nodes.map((node) => [node.id, { x: node.x, y: node.y, width: node.width, height: node.height }]));
     nextView.layout.layers = Object.fromEntries((laidOut.layers || []).map((layer) => [layer.id, { x: layer.x, y: layer.y, width: layer.width, height: layer.height }]));
-    nextView.layout.edges = Object.fromEntries((laidOut.edges || []).map((edge, edgeIndex) => [stableEdgeId(edge, edgeIndex), { fromSide: edge.fromSide, toSide: edge.toSide, waypoints: [] }]));
+    nextView.layout.edges = Object.fromEntries((laidOut.edges || []).map((edge, edgeIndex) => {
+      const id = stableEdgeId(edge, edgeIndex);
+      const existing = nextView.layout.edges?.[id] || {};
+      const preserved = existing.lockedRoute || existing.routeMode === "manual";
+      return [id, preserved ? existing : {
+        fromSide: edge.fromSide,
+        toSide: edge.toSide,
+        waypoints: [],
+        routeMode: "auto",
+        routeStyle: view.type === "mindmap" ? "curved" : "orthogonal",
+        lockedRoute: false,
+      }];
+    }));
     nextView.layout.engine = view.type === "dependency" ? "elk" : "compact";
     nextView.layout.mode = "auto";
     nextView.layout.editorVersion = 2;
@@ -1177,9 +1400,12 @@ function addChildOrSibling(asChild) {
 
 function copySelection() {
   const nodeIds = selectedSemanticNodeIds();
+  document.documentElement.dataset.lastCopyCount = String(nodeIds.length);
   if (!nodeIds.length) return;
   const blueprint = activeBlueprint();
   copiedPayload = copySubgraph(blueprint, nodeIds);
+  const assetIds = new Set(copiedPayload.nodes.map((node) => node.image?.assetId).filter(Boolean));
+  copiedPayload.assets = Object.fromEntries([...assetIds].filter((id) => diagram.assets?.[id]).map((id) => [id, clone(diagram.assets[id])]));
   graph.copy(selectedCells());
   pasteCount = 0;
   showToast(`已复制 ${nodeIds.length} 个节点`);
@@ -1197,10 +1423,85 @@ function pasteSelection() {
   const pasted = pasteSubgraph(copiedPayload, { offset });
   const newIds = pasted.nodeIds;
   runMutation("粘贴", (next) => {
+    next.assets ||= {};
+    Object.assign(next.assets, clone(copiedPayload.assets || {}));
     next.nodes.push(...pasted.nodes);
     next.edges.push(...pasted.edges);
   }, { selectionIds: newIds });
   showToast(`已粘贴 ${newIds.length} 个节点`);
+}
+
+function canvasPointFromClient(clientX, clientY) {
+  const point = scrollerPlugin?.clientToLocalPoint?.(clientX, clientY);
+  if (point && Number.isFinite(point.x) && Number.isFinite(point.y)) return { x: point.x, y: point.y };
+  const bounds = graphShell.getBoundingClientRect();
+  return { x: (clientX - bounds.left) / graph.zoom(), y: (clientY - bounds.top) / graph.zoom() };
+}
+
+async function importImage(input, options = {}) {
+  if (!input || !diagram) return null;
+  const working = clone(diagram);
+  const result = await addImageAssetToDiagram(working, input, {
+    name: options.name || input.name || "image",
+    source: options.source || "import",
+    alt: options.alt || input.name || "",
+  });
+  const asset = result.asset;
+  const selectedId = options.nodeId || (selectedSemanticNodeIds().length === 1 ? selectedSemanticNodeIds()[0] : "");
+  let createdId = "";
+  runMutation(selectedId ? "插入或替换图片" : "粘贴图片节点", (next) => {
+    next.assets ||= {};
+    next.assets[asset.id] = clone(asset);
+    const target = next.nodes.find((node) => node.id === selectedId);
+    if (target) {
+      const placement = target.kind === "image" ? "node" : (target.image?.placement || "left");
+      assignImageToNode(target, asset.id, {
+        placement,
+        fit: target.image?.fit || "contain",
+        padding: target.image?.padding ?? 8,
+        opacity: target.image?.opacity ?? 1,
+        alt: options.alt || asset.alt || asset.name,
+      });
+      if (placement === "top") target.height = Math.max(176, Number(target.height || CARD_HEIGHT));
+      return;
+    }
+    createdId = `image-node-${Date.now().toString(36)}`;
+    const point = options.point || canvasPointFromClient(graphShell.getBoundingClientRect().left + graphShell.clientWidth / 2, graphShell.getBoundingClientRect().top + graphShell.clientHeight / 2);
+    const width = 320;
+    const height = clamp(Math.round(width * asset.height / Math.max(asset.width, 1)), 180, 360);
+    const node = {
+      id: createdId,
+      title: asset.alt || asset.name || "图片",
+      subtitle: "",
+      kind: "image",
+      status: "implemented",
+      manual: true,
+      x: Math.round((point.x - width / 2) / GRID_SIZE) * GRID_SIZE,
+      y: Math.round((point.y - height / 2) / GRID_SIZE) * GRID_SIZE,
+      width,
+      height,
+      titleSize: 16,
+      subtitleSize: 12,
+      fill: "#ffffff",
+      stroke: "#8aa0bb",
+      borderRadius: 8,
+    };
+    assignImageToNode(node, asset.id, { placement: "node", fit: "contain", padding: 8, alt: asset.alt || asset.name });
+    next.nodes.push(node);
+    for (const view of next.views || []) {
+      view.layout ||= { nodes: {}, edges: {}, layers: {} };
+      view.layout.nodes ||= {};
+      view.layout.nodes[createdId] = { x: node.x, y: node.y, width, height };
+    }
+  }, { selectionIds: selectedId ? [selectedId] : [createdId] });
+  requestAnimationFrame(() => {
+    const id = selectedId || createdId;
+    if (id) selectNode(id, { center: !selectedId });
+  });
+  document.documentElement.dataset.lastImageImport = asset.id;
+  document.documentElement.dataset.lastImageNode = selectedId || createdId;
+  showToast(result.deduped ? "已复用并插入图片" : "图片已嵌入图表");
+  return { assetId: asset.id, nodeId: selectedId || createdId };
 }
 
 function hideSelection() {
@@ -1230,6 +1531,7 @@ function deleteSelection(options = {}) {
     });
     view.hiddenNodes = [...new Set([...(view.hiddenNodes || []), ...generated])];
     if (selectedEdge && !selectedEdge.getData().manual) view.hiddenEdges = [...new Set([...(view.hiddenEdges || []), selectedEdge.getData().edgeId])];
+    removeUnreferencedImageAssets(next);
   });
 }
 
@@ -1303,6 +1605,11 @@ function shortestPathForSelection() {
 function bindGraphEvents() {
   graph.on("selection:changed", () => {
     if (suppressGraphEvents) return;
+    for (const edge of graph.getEdges()) edge.removeTools?.();
+    const selectedEdge = selectedSemanticEdge();
+    if (selectedEdge && activeTool === "select") {
+      try { selectedEdge.addTools(["vertices", "segments"]); } catch { /* Route editing remains available through the inspector. */ }
+    }
     updateSelectionUI();
   });
   graph.on("scale", positionSelectionToolbar);
@@ -1358,6 +1665,17 @@ function bindGraphEvents() {
     graph.cleanSelection();
     graph.select(edge);
   });
+  graph.on("edge:mousedown", () => {
+    if (activeTool === "select") edgeRouteSnapshot = snapshot();
+  });
+  graph.on("edge:change:vertices", ({ edge }) => {
+    if (suppressGraphEvents || activeTool !== "select") return;
+    const data = edge.getData() || {};
+    edge.setData({ ...data, manualRoute: true, edge: { ...(data.edge || {}), routeMode: "manual", lockedRoute: true } }, { routeEdit: true });
+    syncGraphLayoutToDiagram();
+    const entry = activeView().layout?.edges?.[data.edgeId];
+    if (entry) Object.assign(entry, { routeMode: "manual", lockedRoute: true });
+  });
 
   graph.on("edge:connected", ({ edge, isNew, currentCell, currentMagnet, currentView, terminalType }) => {
     if (!isNew || suppressGraphEvents) return;
@@ -1375,7 +1693,7 @@ function bindGraphEvents() {
       return;
     }
     const id = `manual-edge-${Date.now().toString(36)}`;
-    diagram.edges.push({ id, from: source, to: target, relation: activeView().type === "mindmap" ? "contains" : activeView().type === "dependency" ? "depends_on" : "calls", label: "手动关系", manual: true, evidence: [] });
+    diagram.edges.push({ id, from: source, to: target, relation: activeView().type === "mindmap" ? "contains" : activeView().type === "dependency" ? "depends_on" : "calls", label: "手动关系", manual: true, routeMode: "auto", routeStyle: activeView().type === "mindmap" ? "curved" : "orthogonal", evidence: [] });
     const after = snapshot();
     recordAppliedMutation("创建关系", before, after, { selectionIds: [source, target] });
     renderGraph({ selectionIds: [source, target] });
@@ -1516,7 +1834,7 @@ function returnFromDrilldown() {
 }
 
 function bindPointerWindowEvents() {
-  window.addEventListener("pointermove", (event) => {
+  const handleMove = (event) => {
     const rect = graphShell.getBoundingClientRect();
     if (panState) {
       scrollerPlugin.setScrollbarPosition(
@@ -1541,8 +1859,8 @@ function bindPointerWindowEvents() {
         drawLasso();
       }
     }
-  });
-  window.addEventListener("pointerup", () => {
+  };
+  const handleUp = () => {
     if (interaction.state === InteractionState.PANNING) {
       graphShell.classList.remove("is-panning");
       panState = null;
@@ -1551,7 +1869,19 @@ function bindPointerWindowEvents() {
     finishMarquee();
     finishLasso();
     if (interaction.state === InteractionState.DRAGGING && !dragSnapshot) interaction.end();
-  });
+    if (edgeRouteSnapshot) {
+      const before = edgeRouteSnapshot;
+      edgeRouteSnapshot = null;
+      const after = snapshot();
+      if (JSON.stringify(before.diagram.views) !== JSON.stringify(after.diagram.views)) {
+        recordAppliedMutation("调整关系路线", before, after);
+      }
+    }
+  };
+  window.addEventListener("pointermove", handleMove);
+  window.addEventListener("mousemove", handleMove);
+  window.addEventListener("pointerup", handleUp);
+  window.addEventListener("mouseup", handleUp);
 }
 
 function renderSearchResults() {
@@ -1563,7 +1893,24 @@ function renderSearchResults() {
   }
   const matches = diagram.nodes.filter((node) => [node.title,node.subtitle,node.kind,node.status,...(node.evidence||[])].join(" ").toLowerCase().includes(query));
   searchResults.hidden = false;
-  searchResults.innerHTML = matches.slice(0,30).map((node) => `<button type="button" data-search-id="${node.id}"><strong>${node.title}</strong><span>${node.subtitle || node.id}</span></button>`).join("") || '<div class="empty-copy">没有匹配结果。</div>';
+  searchResults.innerHTML = "";
+  for (const node of matches.slice(0, 30)) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.searchId = node.id;
+    const title = document.createElement("strong");
+    title.textContent = node.title;
+    const subtitle = document.createElement("span");
+    subtitle.textContent = node.subtitle || node.id;
+    button.append(title, subtitle);
+    searchResults.append(button);
+  }
+  if (!matches.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty-copy";
+    empty.textContent = "没有匹配结果。";
+    searchResults.append(empty);
+  }
   const matchIds = new Set(matches.map((node) => node.id));
   for (const cell of graph.getNodes()) if (cell.getData()?.type === "node") cell.attr("body/opacity", matchIds.has(cell.id) ? 1 : .22);
 }
@@ -1599,6 +1946,17 @@ function applyInspectorChange(target) {
   }
   const ids = selectedSemanticNodeIds();
   if (!ids.length) return;
+  if (key.startsWith("image:")) {
+    const property = key.slice(6);
+    runMutation("编辑图片", (next) => {
+      for (const node of next.nodes) {
+        if (!ids.includes(node.id) || !node.image) continue;
+        node.image[property] = property === "opacity" ? clamp(Number(target.value), 0, 1) : target.value;
+        if (property === "placement" && target.value === "top") node.height = Math.max(176, Number(node.height || CARD_HEIGHT));
+      }
+    }, { selectionIds: ids });
+    return;
+  }
   const numericKeys = new Set(["titleSize", "subtitleSize", "fontWeight", "strokeWidth", "borderRadius"]);
   const value = target.type === "checkbox" ? target.checked : (target.type === "number" || numericKeys.has(key)) ? Number(target.value) : target.value;
   runMutation("编辑节点", (next) => {
@@ -1609,7 +1967,15 @@ function applyInspectorChange(target) {
         view.layout.nodes[node.id] ||= {};
         view.layout.nodes[node.id][key] = Math.round(Number(value)/GRID_SIZE)*GRID_SIZE;
         if (view.type === "architecture") node[key] = view.layout.nodes[node.id][key];
-      } else if (key === "title") node.title = textOf(value).trim() || "未命名";
+      } else if (key === "title") {
+        node.title = textOf(value).trim() || "未命名";
+        node.richText ||= normalizeNodeRichText(node);
+        node.richText.title = createRichTextFromPlainText(node.title, { singleBlock: true });
+      } else if (key === "subtitle") {
+        node.subtitle = textOf(value);
+        node.richText ||= normalizeNodeRichText(node);
+        node.richText.subtitle = createRichTextFromPlainText(node.subtitle);
+      }
       else if (key === "titleSize") node.titleSize = clamp(Number(value), 14, 36);
       else if (key === "subtitleSize") node.subtitleSize = clamp(Number(value), 10, 22);
       else if (key === "fontWeight") node.fontWeight = clamp(Number(value), 400, 800);
@@ -1639,6 +2005,13 @@ function exportSvg() {
   downloadBlob(new Blob([renderSvg(blueprint)], { type: "image/svg+xml" }), `${slug(diagram.title)}.svg`);
 }
 
+function assertExportBudget(width, height, scale = 1) {
+  const pixels = Math.ceil(Number(width) * Number(height) * scale * scale);
+  if (!Number.isFinite(pixels) || pixels <= 0 || pixels > MAX_EXPORT_PIXELS) {
+    throw new Error(`导出尺寸过大（${Math.round(pixels / 1_000_000)} MP），请缩小画布或导出比例。`);
+  }
+}
+
 async function exportPng() {
   const blueprint = exportBlueprint();
   const svg = renderSvg(blueprint);
@@ -1647,6 +2020,7 @@ async function exportPng() {
   const url = URL.createObjectURL(blob);
   await new Promise((resolve,reject) => { image.onload=resolve; image.onerror=reject; image.src=url; });
   const scale = 2;
+  assertExportBudget(blueprint.canvas.width, blueprint.canvas.height, scale);
   const canvas = document.createElement("canvas");
   canvas.width = blueprint.canvas.width * scale;
   canvas.height = blueprint.canvas.height * scale;
@@ -1656,6 +2030,7 @@ async function exportPng() {
   context.drawImage(image,0,0,canvas.width,canvas.height);
   URL.revokeObjectURL(url);
   const output = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+  if (!output) throw new Error("PNG 导出失败：浏览器无法分配足够内存。");
   downloadBlob(output, `${slug(diagram.title)}.png`);
 }
 
@@ -1665,6 +2040,7 @@ async function exportPdf() {
     import("svg2pdf.js"),
   ]);
   const blueprint = exportBlueprint();
+  assertExportBudget(blueprint.canvas.width, blueprint.canvas.height, 1);
   const holder = document.createElement("div");
   holder.style.position = "fixed";
   holder.style.left = "-99999px";
@@ -1690,7 +2066,10 @@ function exportHtml() {
 
 function mermaidFor(blueprint) {
   const lines = ["flowchart TD"];
-  for (const node of blueprint.nodes) lines.push(`  ${node.id.replace(/[^a-zA-Z0-9_]/g,"_")}["${String(node.title).replace(/"/g,"'")}"]`);
+  for (const node of blueprint.nodes) {
+    const imageAlt = node.image?.alt ? `\\n[图: ${node.image.alt}]` : "";
+    lines.push(`  ${node.id.replace(/[^a-zA-Z0-9_]/g,"_")}["${String(`${node.title}${imageAlt}`).replace(/"/g,"'")}"]`);
+  }
   for (const edge of blueprint.edges) lines.push(`  ${edge.from.replace(/[^a-zA-Z0-9_]/g,"_")} -->|${String(edge.label || edge.relation || "").replace(/\|/g,"/")}| ${edge.to.replace(/[^a-zA-Z0-9_]/g,"_")}`);
   return `${lines.join("\n")}\n`;
 }
@@ -1703,8 +2082,8 @@ async function saveDiagram(saveAs = false) {
   syncGraphLayoutToDiagram();
   if (window.mindmapDesktop?.isDesktop) {
     const result = saveAs || !currentFilePath
-      ? await window.mindmapDesktop.saveJsonAs({ filePath: currentFilePath || `${slug(diagram.title)}.diagram.json`, diagram })
-      : await window.mindmapDesktop.saveJson({ filePath: currentFilePath, diagram });
+      ? await window.mindmapDesktop.saveJsonAs({ suggestedName: currentFilePath ? currentFilePath.split(/[\\/]/).at(-1) : `${slug(diagram.title)}.diagram.json`, diagram })
+      : await window.mindmapDesktop.saveJson({ diagram });
     if (result?.ok) {
       currentFilePath = result.filePath;
       $("#save-status").textContent = "已保存";
@@ -1752,9 +2131,10 @@ function loadDiagram(input, options = {}) {
 
 async function loadDefault() {
   try {
-    const stored = localStorage.getItem(LAST_DIAGRAM_KEY);
-    if (stored) {
-      loadDiagram(JSON.parse(stored), { filePath: localStorage.getItem(LAST_FILE_KEY) || "", fit: true });
+    const stored = await migrateLegacyDraft(LAST_DIAGRAM_KEY, LAST_FILE_KEY);
+    const draft = stored?.diagram ? stored : await loadDraft();
+    if (draft?.diagram) {
+      loadDiagram(draft.diagram, { filePath: draft.filePath || "", fit: true });
       return;
     }
   } catch {
@@ -1795,6 +2175,57 @@ function showContextMenu(event, items) {
   contextMenu.hidden = false;
 }
 
+function runRichTextAction(action, options = {}) {
+  if (inlineEditor?.isActive()) {
+    inlineEditor.restoreSelection();
+    action();
+    return true;
+  }
+  const ids = selectedSemanticNodeIds();
+  if (ids.length !== 1) return false;
+  if (!beginNodeEdit(ids[0], { field: options.field || "title", selection: options.selection || "all" })) return false;
+  requestAnimationFrame(() => action());
+  return true;
+}
+
+function toggleRichTextMark(key, explicitValue) {
+  return runRichTextAction(() => {
+    const current = key === "fontWeight" ? Number(activeRichTextMarks.fontWeight || 400) >= 700 : Boolean(activeRichTextMarks[key]);
+    const value = explicitValue !== undefined ? explicitValue : (key === "fontWeight" ? (current ? false : "700") : !current);
+    inlineEditor.applyMark({ [key]: value });
+  });
+}
+
+function cycleParagraphAlignment() {
+  const button = selectionToolbar.querySelector("[data-rich-align]");
+  const alignments = ["left", "center", "right"];
+  const current = button?.dataset.richAlign || "left";
+  const next = alignments[(alignments.indexOf(current) + 1) % alignments.length];
+  if (button) {
+    button.dataset.richAlign = next;
+    const icon = button.querySelector("[data-lucide]:first-child");
+    if (icon) icon.setAttribute("data-lucide", `align-${next}`);
+    refreshIcons(button);
+  }
+  if (!runRichTextAction(() => inlineEditor.setBlockAlign(next))) applySelectedNodeStyle({ textAlign: next }, "修改文字对齐");
+}
+
+function cycleNodeImagePlacement() {
+  const id = selectedSemanticNodeIds().at(-1);
+  const node = semanticNode(id);
+  if (!node?.image) {
+    imageFileInput.click();
+    return;
+  }
+  const placements = ["left", "top", "background"];
+  const nextPlacement = placements[(placements.indexOf(node.image.placement) + 1) % placements.length];
+  runMutation("切换图片布局", (next) => {
+    const target = next.nodes.find((item) => item.id === id);
+    target.image.placement = nextPlacement;
+    if (nextPlacement === "top") target.height = Math.max(176, Number(target.height || CARD_HEIGHT));
+  }, { selectionIds: [id] });
+}
+
 function bindDomEvents() {
   $("#dismiss-error").addEventListener("click", clearError);
   $("#toggle-left").addEventListener("click", () => appShell.classList.toggle("is-left-collapsed"));
@@ -1815,6 +2246,13 @@ function bindDomEvents() {
     if (!file) return;
     try { loadDiagram(JSON.parse(await file.text()), { filePath: file.name, fit: true }); } catch (error) { showError(error); }
     openFileInput.value = "";
+  });
+  imageFileInput.addEventListener("change", async () => {
+    const file = imageFileInput.files?.[0];
+    if (!file) return;
+    try { await importImage(file, { source: "upload", name: file.name, alt: file.name.replace(/\.[^.]+$/, "") }); }
+    catch (error) { showError(error); }
+    imageFileInput.value = "";
   });
   $("#copy-summary").addEventListener("click", () => copySummary().catch(showError));
   for (const button of $$('[data-export]')) button.addEventListener("click", () => {
@@ -1864,6 +2302,14 @@ function bindDomEvents() {
     if (nodeAction === "hide") hideSelection();
     if (nodeAction === "delete") deleteSelection();
     if (nodeAction === "focus") fitSelection();
+    if (nodeAction === "image") imageFileInput.click();
+    if (nodeAction === "image-remove") {
+      const ids = selectedSemanticNodeIds();
+      runMutation("删除图片", (next) => {
+        for (const node of next.nodes) if (ids.includes(node.id)) delete node.image;
+        removeUnreferencedImageAssets(next);
+      }, { selectionIds: ids });
+    }
     const edgeAction = event.target.closest("[data-edge-action]")?.dataset.edgeAction;
     if (edgeAction === "focus") {
       const edge = selectedSemanticEdge()?.getData()?.edge;
@@ -1872,6 +2318,7 @@ function bindDomEvents() {
     if (edgeAction === "hide") hideSelection();
     if (edgeAction === "delete") deleteSelection();
     if (edgeAction === "flag") applyInspectorEdgeFlag();
+    if (edgeAction === "route") toggleSelectedEdgeRouteLock();
     const viewAction = event.target.closest("[data-view-action]")?.dataset.viewAction;
     if (viewAction === "shortest-path") shortestPathForSelection();
     if (viewAction === "clear-filter") runMutation("清除依赖聚焦", (next) => { const view=next.views.find((item)=>item.id===next.activeViewId); delete view.filters.rootId; view.hiddenNodes=[]; });
@@ -1887,12 +2334,34 @@ function bindDomEvents() {
     if (preset && presets[preset]) applySelectedNodeStyle(presets[preset], "应用主题样式");
   });
 
+  const preserveInlineSelection = () => inlineEditor?.isActive() && inlineEditor.saveSelection();
+  selectionToolbar.addEventListener("pointerdown", preserveInlineSelection, true);
+  selectionToolbar.addEventListener("mousedown", preserveInlineSelection, true);
   selectionToolbar.addEventListener("click", (event) => {
     if (event.target.closest("#quick-edit")) { const id=selectedSemanticNodeIds().at(-1); if(id) beginNodeEdit(id); return; }
     if (event.target.closest("#quick-add-child")) { addChildOrSibling(true); return; }
-    if (event.target.closest("#quick-bold")) { const style=commonSelectedStyle(); applySelectedNodeStyle({ fontWeight: style?.fontWeight >= 700 ? 400 : 700 }, "切换粗体"); return; }
-    const quickAlign = event.target.closest("[data-quick-align]")?.dataset.quickAlign;
-    if (quickAlign) { applySelectedNodeStyle({ textAlign: quickAlign }, "修改文字对齐"); return; }
+    const markButton = event.target.closest("[data-rich-mark]");
+    if (markButton) { toggleRichTextMark(markButton.dataset.richMark); return; }
+    if (event.target.closest("[data-rich-align]")) { cycleParagraphAlignment(); return; }
+    const blockButton = event.target.closest("[data-rich-block]");
+    if (blockButton) {
+      const nextType = blockButton.classList.toggle("is-active") ? blockButton.dataset.richBlock : "paragraph";
+      runRichTextAction(() => inlineEditor.setBlockType(nextType), { field: "subtitle" });
+      return;
+    }
+    if (event.target.closest('[data-rich-action="link"]')) {
+      const link = window.prompt("输入链接（https、http 或 mailto）", activeRichTextMarks.link || "https://");
+      if (link !== null) toggleRichTextMark("link", link.trim() || false);
+      return;
+    }
+    const nodeAction = event.target.closest("[data-node-action]")?.dataset.nodeAction;
+    if (nodeAction === "image") { imageFileInput.click(); return; }
+    if (nodeAction === "layout") { cycleNodeImagePlacement(); return; }
+    if (nodeAction === "note") {
+      if (inlineEditor?.isActive()) inlineEditor.focusField("subtitle", "all");
+      else { const id=selectedSemanticNodeIds().at(-1); if(id) beginNodeEdit(id, { field: "subtitle", selection: "all" }); }
+      return;
+    }
     const action = event.target.closest("[data-batch-action]")?.dataset.batchAction;
     if (action === "align-left" || action === "align-top" || action === "distribute") alignSelection(action);
     else if (action === "group") groupSelected();
@@ -1900,8 +2369,14 @@ function bindDomEvents() {
     else if (action === "delete") deleteSelection();
   });
   selectionToolbar.addEventListener("change", (event) => {
-    if (event.target.id === "quick-title-size" && event.target.value) applySelectedNodeStyle({ fontSize: Number(event.target.value) }, "修改标题字号");
-    if (event.target.id === "quick-text-color") applySelectedNodeStyle({ textColor: event.target.value }, "修改文字颜色");
+    if (event.target.id === "quick-font-family") runRichTextAction(() => inlineEditor.applyMark({ fontFamily: event.target.value }));
+    if (event.target.id === "quick-title-size" && event.target.value) {
+      if (!runRichTextAction(() => inlineEditor.applyMark({ fontSize: Number(event.target.value) }))) applySelectedNodeStyle({ fontSize: Number(event.target.value) }, "修改标题字号");
+    }
+    if (event.target.id === "quick-text-color") {
+      if (!runRichTextAction(() => inlineEditor.applyMark({ color: event.target.value }))) applySelectedNodeStyle({ textColor: event.target.value }, "修改文字颜色");
+    }
+    if (event.target.id === "quick-highlight-color") runRichTextAction(() => inlineEditor.applyMark({ backgroundColor: event.target.value }));
     if (event.target.id === "quick-fill-color") applySelectedNodeStyle({ fill: event.target.value }, "修改填充颜色");
     if (event.target.id === "quick-border-color") applySelectedNodeStyle({ borderColor: event.target.value }, "修改边框颜色");
   });
@@ -1918,15 +2393,69 @@ function bindDomEvents() {
   graphShell.addEventListener("contextmenu", (event) => {
     event.preventDefault();
     const selected = selectedSemanticNodeIds().length;
-    showContextMenu(event, selected ? [["聚焦", "focus"],["复制", "copy"],["创建分组", "group"],["从视图隐藏", "hide"],["删除/隐藏", "delete"]] : [["新建模块", "add"],["新建便签", "note"],["新建分组框", "add-group"],["自动布局", "layout"],["适应全部", "fit"]]);
+    showContextMenu(event, selected ? [["聚焦", "focus"],["插入或替换图片", "image"],["复制", "copy"],["创建分组", "group"],["从视图隐藏", "hide"],["删除/隐藏", "delete"]] : [["粘贴或上传图片", "image"],["新建模块", "add"],["新建便签", "note"],["新建分组框", "add-group"],["自动布局", "layout"],["适应全部", "fit"]]);
   });
   contextMenu.addEventListener("click", (event) => {
     const action = event.target.closest("[data-context-action]")?.dataset.contextAction;
-    const actions = { focus: fitSelection, copy: copySelection, group: groupSelected, hide: hideSelection, delete: deleteSelection, add: () => addManualNode("module"), note: () => addManualNode("note"), "add-group": () => addManualNode("group"), layout: autoLayout, fit: fitAll };
+    const actions = { focus: fitSelection, image: () => imageFileInput.click(), copy: copySelection, group: groupSelected, hide: hideSelection, delete: deleteSelection, add: () => addManualNode("module"), note: () => addManualNode("note"), "add-group": () => addManualNode("group"), layout: autoLayout, fit: fitAll };
     actions[action]?.();
     contextMenu.hidden = true;
   });
   document.addEventListener("pointerdown", (event) => { if (!event.target.closest?.("#context-menu")) contextMenu.hidden = true; });
+  document.addEventListener("paste", (event) => {
+    lastPasteEventAt = performance.now();
+    const internalPayload = event.clipboardData?.getData(NODE_CLIPBOARD_TYPE);
+    if (internalPayload) {
+      try {
+        const parsed = JSON.parse(internalPayload);
+        if (Array.isArray(parsed?.nodes) && parsed.nodes.length) {
+          copiedPayload = parsed;
+          event.preventDefault();
+          pasteSelection();
+          return;
+        }
+      } catch {
+        // Ignore malformed foreign clipboard data and continue with safe fallbacks.
+      }
+    }
+    const imageItem = [...(event.clipboardData?.items || [])].find((item) => item.kind === "file" && item.type.startsWith("image/"));
+    if (imageItem) {
+      event.preventDefault();
+      const file = imageItem.getAsFile();
+      if (file) importImage(file, { source: "clipboard", name: file.name || "clipboard-image" }).catch(showError);
+      return;
+    }
+    if (!event.target.matches?.("input,textarea,select,[contenteditable=true]") && copiedPayload?.nodes?.length) {
+      event.preventDefault();
+      pasteSelection();
+    }
+  });
+  document.addEventListener("copy", (event) => {
+    if (event.target.matches?.("input,textarea,select,[contenteditable=true]")) return;
+    if (!selectedSemanticNodeIds().length) return;
+    copySelection();
+    event.clipboardData?.setData(NODE_CLIPBOARD_TYPE, JSON.stringify(copiedPayload));
+    event.clipboardData?.setData("text/plain", copiedPayload.nodes.map((node) => node.title || "未命名").join("\n"));
+    event.preventDefault();
+  });
+  graphShell.addEventListener("dragover", (event) => {
+    if ([...(event.dataTransfer?.items || [])].some((item) => item.kind === "file" && item.type.startsWith("image/"))) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+      graphShell.classList.add("is-image-drop-target");
+    }
+  });
+  graphShell.addEventListener("dragleave", (event) => {
+    if (!graphShell.contains(event.relatedTarget)) graphShell.classList.remove("is-image-drop-target");
+  });
+  graphShell.addEventListener("drop", (event) => {
+    graphShell.classList.remove("is-image-drop-target");
+    const file = [...(event.dataTransfer?.files || [])].find((item) => item.type.startsWith("image/"));
+    if (!file) return;
+    event.preventDefault();
+    const nodeId = event.target.closest?.(".x6-node[data-cell-id]")?.getAttribute("data-cell-id") || "";
+    importImage(file, { source: "drop", name: file.name, nodeId, point: canvasPointFromClient(event.clientX, event.clientY) }).catch(showError);
+  });
 
   bindResizer($("#left-resizer"), "--sidebar-width", 220, 420, 1);
   bindResizer($("#right-resizer"), "--inspector-width", 280, 500, -1);
@@ -1937,6 +2466,36 @@ function applyInspectorEdgeFlag() {
   if (!cell) return;
   const id = cell.getData().edgeId;
   runMutation("标记关系错误", (next) => { const edge=next.edges.find((item,index)=>stableEdgeId(item,index)===id); if(edge) edge.flagged=!edge.flagged; });
+}
+
+function toggleSelectedEdgeRouteLock() {
+  const cell = selectedSemanticEdge();
+  if (!cell) return;
+  const edgeId = cell.getData().edgeId;
+  const current = activeView().layout?.edges?.[edgeId] || cell.getData().edge || {};
+  const unlock = current.lockedRoute || current.routeMode === "manual";
+  runMutation(unlock ? "恢复自动路由" : "锁定关系路线", (next) => {
+    const view = next.views.find((item) => item.id === next.activeViewId);
+    view.layout ||= { nodes: {}, layers: {}, edges: {} };
+    view.layout.edges ||= {};
+    const layoutEdge = view.layout.edges[edgeId] ||= {};
+    if (unlock) {
+      Object.assign(layoutEdge, { routeMode: "auto", lockedRoute: false });
+      delete layoutEdge.waypoints;
+      delete layoutEdge.curveControlPoints;
+      delete layoutEdge.labelAt;
+    } else {
+      const vertices = cell.getVertices().map(({ x, y }) => ({ x, y }));
+      const curved = current.routeStyle === "curved";
+      Object.assign(layoutEdge, {
+        routeMode: "manual",
+        lockedRoute: true,
+        routeStyle: curved ? "curved" : "orthogonal",
+        ...(curved ? { curveControlPoints: vertices } : { waypoints: vertices }),
+      });
+    }
+  });
+  requestAnimationFrame(() => selectEdge(edgeId));
 }
 
 function bindResizer(handle, property, min, max, direction) {
@@ -1955,10 +2514,12 @@ function bindResizer(handle, property, min, max, direction) {
 function bindKeyboard() {
   window.addEventListener("keydown", (event) => {
     const typing = event.target.matches?.("input,textarea,select,[contenteditable=true]");
-    if (event.code === "Space" && !typing) {
+    const isSpace = event.code === "Space" || event.key === " " || event.key === "Space" || event.key === "Spacebar" || event.keyCode === 32;
+    if (isSpace && !typing) {
       event.preventDefault();
       spaceDown = true;
       graphShell.classList.add("is-space-pan");
+      document.documentElement.dataset.spacePanActive = "true";
       return;
     }
     if (typing) return;
@@ -1970,9 +2531,16 @@ function bindKeyboard() {
     if (mod && key === "s") { event.preventDefault(); return saveDiagram(event.shiftKey); }
     if (mod && key === "z") { event.preventDefault(); return event.shiftKey ? redo() : undo(); }
     if (mod && key === "y") { event.preventDefault(); return redo(); }
-    if (mod && key === "c") { event.preventDefault(); document.documentElement.dataset.lastShortcut = "copy"; return copySelection(); }
+    if (mod && key === "c") { document.documentElement.dataset.lastShortcut = "copy"; copySelection(); return; }
     if (mod && key === "x") { event.preventDefault(); document.documentElement.dataset.lastShortcut = "cut"; return cutSelection(); }
-    if (mod && key === "v") { event.preventDefault(); document.documentElement.dataset.lastShortcut = "paste"; return pasteSelection(); }
+    if (mod && key === "v") {
+      document.documentElement.dataset.lastShortcut = "paste";
+      const requestedAt = performance.now();
+      window.setTimeout(() => {
+        if (lastPasteEventAt < requestedAt && copiedPayload?.nodes?.length && !inlineEditor?.isActive()) pasteSelection();
+      }, 120);
+      return;
+    }
     if (mod && key === "a") { event.preventDefault(); graph.cleanSelection(); graph.select(graph.getNodes().filter((cell)=>cell.getData()?.type==="node")); return; }
     if (key === "v") return setTool("select");
     if (key === "h") return setTool("pan");
@@ -2005,9 +2573,10 @@ function bindKeyboard() {
     if (event.key === "?") openCommandPalette();
   });
   window.addEventListener("keyup", (event) => {
-    if (event.code === "Space") {
+    if (event.code === "Space" || event.key === " " || event.key === "Space" || event.key === "Spacebar" || event.keyCode === 32) {
       spaceDown = false;
       graphShell.classList.remove("is-space-pan");
+      document.documentElement.dataset.spacePanActive = "false";
     }
   });
   window.addEventListener("blur", () => { spaceDown=false; graphShell.classList.remove("is-space-pan"); interaction.forceIdle(); });

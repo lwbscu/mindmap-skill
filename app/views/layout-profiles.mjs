@@ -5,8 +5,8 @@ export const LAYOUT_PROFILES = Object.freeze({
     type: "architecture",
     direction: "down",
     gridSize: 8,
-    node: Object.freeze({ width: 336, height: 96, horizontalGap: 48, verticalGap: 28 }),
-    layer: Object.freeze({ paddingX: 36, paddingY: 32, gap: 40, minHeight: 152 }),
+    node: Object.freeze({ width: 336, height: 96, horizontalGap: 152, verticalGap: 40 }),
+    layer: Object.freeze({ paddingX: 36, paddingY: 32, gap: 56, minHeight: 152 }),
     elk: Object.freeze({
       "elk.algorithm": "layered",
       "elk.direction": "DOWN",
@@ -18,7 +18,7 @@ export const LAYOUT_PROFILES = Object.freeze({
     type: "dependency",
     direction: "right",
     gridSize: 8,
-    node: Object.freeze({ width: 336, height: 100, horizontalGap: 112, verticalGap: 48 }),
+    node: Object.freeze({ width: 336, height: 100, horizontalGap: 168, verticalGap: 48 }),
     layer: Object.freeze({ paddingX: 88, paddingY: 84, gap: 80, minHeight: 220 }),
     elk: Object.freeze({
       "elk.algorithm": "layered",

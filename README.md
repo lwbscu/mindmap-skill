@@ -10,7 +10,9 @@ MindMap 是一个面向 Claude Code 与 Codex 的本地桌面结构框图工具�
 - Use large readable text, pastel layer bands, explicit arrow routes, and label backgrounds.
 - Switch between MindMap, dependency, and architecture views over one shared graph, with per-view camera, layout, filters, hidden state, and saved views.
 - Work in a focused infinite canvas with rectangle/lasso selection, multi-node dragging, pan/zoom, ports, grouping, grid snapping, search, minimap, and responsive inspectors.
-- Edit node titles and descriptions in place with double-click or `F2`, then format one or many nodes from the floating toolbar or inspector. Font size, weight, alignment, text/fill/border colors, border width, and corner radius are all editable and undoable.
+- Edit node titles and descriptions in place with double-click or `F2`. The reference-style floating toolbar applies fonts, sizes, emphasis, lists, alignment, links, code, text/highlight colors, and node colors to the current character selection without losing focus.
+- Paste, upload, or drag PNG/JPEG/WebP images into nodes or onto the canvas. Assets are hash-deduplicated and embedded in JSON; image nodes remain connectable and export to SVG, PNG, PDF, JSON, and standalone HTML.
+- Route architecture/dependency edges with orthogonal obstacle avoidance and MindMap branches with smooth curves. Manual bends can be locked and later returned to automatic routing.
 - Use XMind-style topic creation in MindMap view: `Tab` adds a child and `Enter` adds a sibling. Use 100-step undo/redo and continuous paste offsets, run automatic layouts, and export SVG, PNG, PDF, JSON, standalone HTML, or Mermaid.
 - Validate diagrams at script runtime, including every example, node IDs, edge references, status tags, and relation tags.
 - Install MindMap as a local desktop launcher on Linux.
@@ -53,7 +55,7 @@ Start the local desktop window:
 npm run app:open
 ```
 
-The normal entry is the Electron desktop window. It loads local files through the `mindmap://` protocol and does not start a `127.0.0.1` server. Use `npm run app:serve` only when debugging the static web server directly. The default example is [`examples/rpent-libero-behavior.diagram.json`](examples/rpent-libero-behavior.diagram.json), currently covering the RPent module architecture, BEHAVIOR first-pass integration, and next-stage planned interventions. Use **打开** to load another diagram and switch among **MindMap / 依赖图 / 架构图**. Double-click a card or press `F2` to edit its title and description; press `Enter` to commit, `Shift+Enter` for a line break, or `Esc` to cancel. Selecting nodes opens a compact floating format bar for title size, bold, text/fill/border colors, and alignment; the right inspector contains the complete style controls. In MindMap view, use `Tab` for a child topic and `Enter` for a sibling topic.
+The normal entry is the Electron desktop window. It loads local files through the `mindmap://` protocol and does not start a `127.0.0.1` server. Use `npm run app:serve` only when debugging the static web server directly. The default example is [`examples/rpent-libero-behavior.diagram.json`](examples/rpent-libero-behavior.diagram.json), currently covering the RPent module architecture, BEHAVIOR first-pass integration, and next-stage planned interventions. Use **打开** to load another diagram and switch among **MindMap / 依赖图 / 架构图**. Double-click a card or press `F2` to edit its title and description; press `Enter` to commit, `Shift+Enter` for a line break, or `Esc` to cancel. Selecting nodes opens a compact floating format bar; while editing it keeps the character selection alive and mirrors the single-line grouped toolbar shown in the project reference. The right inspector contains complete node, image, route, and style controls. In MindMap view, use `Tab` for a child topic and `Enter` for a sibling topic.
 
 Drag empty space to marquee-select, drag right-to-left for crossing selection, hold `Alt` for lasso, and hold `Shift` to toggle selection. Use **连线** or drag from ports to create relations, `Space`/middle mouse to pan, `Ctrl/Cmd` + wheel to zoom around the pointer, and standard copy/paste/undo shortcuts before exporting. Automatic layout uses compact 20px-title cards and reroutes stale edge waypoints so a whole-diagram overview stays legible.
 
@@ -101,13 +103,13 @@ npm run app:render -- examples/rpent-libero-behavior.diagram.json
 
 MindMap diagrams use `schemaVersion: "mindmap-app/v1"` with these top-level fields:
 
-- `title`, `subtitle`, `canvas`, `style`
+- `title`, `subtitle`, `canvas`, `style`, optional embedded `assets`
 - `layers`
 - `nodes`
 - `edges`
 - optional `activeViewId`, `views`, and `savedViews`
 
-Nodes use absolute layout fields such as `id`, `title`, `subtitle`, `x`, `y`, `width`, and `height`. Editable appearance fields include `titleSize`, `subtitleSize`, `fontWeight`, `textColor`, `subtitleColor`, `textAlign`, `fill`, `stroke`, `strokeWidth`, and `borderRadius`. Edges support `from`, `to`, side anchors, explicit `waypoints`, labels, and label positions.
+Nodes use absolute layout fields such as `id`, `title`, `subtitle`, `x`, `y`, `width`, and `height`, with optional versioned `richText` and `image` references. Edges support stable IDs, side anchors, labels, automatic or locked routes, orthogonal waypoints, and curved control points.
 
 Older `mindmap-app/v1` files without `views` open as the default architecture view and are compacted for readable whole-diagram preview. The app adds MindMap and dependency views in memory without changing the shared top-level nodes and edges.
 

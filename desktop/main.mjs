@@ -17,6 +17,7 @@ const preloadPath = path.join(__dirname, "preload.mjs");
 const isSmoke = process.env.MINDMAP_ELECTRON_SMOKE === "1" || process.argv.includes("--smoke");
 const isVisual = process.env.MINDMAP_ELECTRON_VISUAL === "1";
 const isAutomated = isSmoke || isVisual;
+let authorizedJsonPath = "";
 
 if (isAutomated) {
   app.setPath("userData", path.join(process.env.TMPDIR || "/tmp", `mindmap-smoke-${process.pid}`));
@@ -93,7 +94,7 @@ function isInternalUrl(url) {
 
 function openExternalSafely(url) {
   const parsed = new URL(url);
-  if (parsed.protocol === "https:" || parsed.protocol === "http:") {
+  if (["https:", "http:", "mailto:"].includes(parsed.protocol)) {
     shell.openExternal(url);
   }
 }
@@ -130,7 +131,9 @@ function registerJsonIpc() {
     if (result.canceled || result.filePaths.length === 0) return { ok: false, canceled: true };
     const filePath = result.filePaths[0];
     try {
-      return { ok: true, filePath, diagram: await readJsonFile(filePath) };
+      const diagram = await readJsonFile(filePath);
+      authorizedJsonPath = filePath;
+      return { ok: true, filePath, diagram };
     } catch (error) {
       return { ok: false, filePath, error: error.message };
     }
@@ -138,8 +141,8 @@ function registerJsonIpc() {
 
   ipcMain.handle("mindmap:save-json", async (_event, payload = {}) => {
     try {
-      const filePath = normalizeJsonPath(payload.filePath);
-      if (!filePath) throw new Error("Missing JSON save path.");
+      const filePath = normalizeJsonPath(authorizedJsonPath);
+      if (!filePath) throw new Error("No authorized JSON save path. Use Save As first.");
       const json = assertJsonValue(payload.diagram);
       await fs.writeFile(filePath, `${json}\n`, "utf8");
       return { ok: true, filePath };
@@ -152,13 +155,14 @@ function registerJsonIpc() {
     try {
       const result = await dialog.showSaveDialog({
         title: "Save MindMap diagram",
-        defaultPath: normalizeJsonPath(payload.filePath || "mindmap.diagram.json"),
+        defaultPath: normalizeJsonPath(path.basename(payload.suggestedName || authorizedJsonPath || "mindmap.diagram.json")),
         filters: jsonFilters()
       });
       if (result.canceled || !result.filePath) return { ok: false, canceled: true };
       const filePath = normalizeJsonPath(result.filePath);
       const json = assertJsonValue(payload.diagram);
       await fs.writeFile(filePath, `${json}\n`, "utf8");
+      authorizedJsonPath = filePath;
       return { ok: true, filePath };
     } catch (error) {
       return { ok: false, error: error.message };
@@ -171,8 +175,12 @@ function reportSmoke(result) {
 }
 
 async function runSmoke(window) {
+  let smokeStep = "initialize";
+  const watchdog = setTimeout(() => {
+    reportSmoke({ ok: false, error: `smoke timeout during ${smokeStep}` });
+    app.exit(1);
+  }, 40000);
   try {
-    let smokeStep = "initialize";
     const pause = (ms = 60) => new Promise((resolve) => setTimeout(resolve, ms));
     const evaluate = (script) => window.webContents.executeJavaScript(script);
     const pointFor = async (selector) => evaluate(`(() => {
@@ -236,12 +244,38 @@ async function runSmoke(window) {
 
     smokeStep = "inline text editing";
     await doubleClick(await pointFor('#graph-canvas .x6-node[data-cell-id="cli-dashboard"]'));
+    await pause(180);
     const inlineEditorOpened = await evaluate('Boolean(document.querySelector(".inline-editor"))');
-    await evaluate(`(() => { const input=document.querySelector('.inline-editor__input--title'); input?.focus(); input?.select(); return document.activeElement === input; })()`);
+    let inlineValueEntered = false;
+    for (let attempt = 0; attempt < 3 && !inlineValueEntered; attempt += 1) {
+      await evaluate(`(() => { const input=document.querySelector('.inline-editor__input--title'); if(!input) return false; input.focus(); const range=document.createRange(); range.selectNodeContents(input); const selection=getSelection(); selection.removeAllRanges(); selection.addRange(range); return document.activeElement === input; })()`);
+      await pause(100);
+      await window.webContents.insertText("CLI / Dashboard 已编辑");
+      await pause(80);
+      inlineValueEntered = await evaluate('document.querySelector(".inline-editor__input--title")?.textContent === "CLI / Dashboard 已编辑"');
+    }
+    await evaluate(`(() => {
+      const input = document.querySelector('.inline-editor__input--title');
+      const text = input ? document.createTreeWalker(input, NodeFilter.SHOW_TEXT).nextNode() : null;
+      if (!input || !text) return false;
+      const range = document.createRange();
+      range.setStart(text, 0);
+      range.setEnd(text, Math.min(3, text.textContent.length));
+      const selection = getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      input.dispatchEvent(new Event('mouseup', { bubbles: true }));
+      return true;
+    })()`);
     await pause(80);
-    await window.webContents.insertText("CLI / Dashboard 已编辑");
-    const inlineValueEntered = await evaluate('document.querySelector(".inline-editor__input--title")?.value === "CLI / Dashboard 已编辑"');
-    await evaluate(`document.querySelector('.inline-editor__input--title')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))`);
+    await click(await pointFor("#quick-bold"));
+    await pause(120);
+    const inlineBoldApplied = await evaluate(`(() => {
+      const input = document.querySelector('.inline-editor__input--title');
+      return [...(input?.querySelectorAll('span') || [])].some((span) => Number(getComputedStyle(span).fontWeight) >= 700 && span.textContent.includes('CLI'));
+    })()`);
+    const inlineToolbarPreservedEditor = await evaluate('Boolean(document.querySelector(".inline-editor")) && !document.querySelector("#selection-toolbar")?.hidden');
+    await evaluate(`(() => { const input=document.querySelector('.inline-editor__input--title'); input?.focus(); input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); })()`);
     await pause(140);
     const inlineCommitState = await evaluate(`(() => ({
       editorOpen: Boolean(document.querySelector('.inline-editor')),
@@ -254,19 +288,11 @@ async function runSmoke(window) {
 
     smokeStep = "marquee selection";
     const marquee = await evaluate(`(() => {
-      const nodes = [...document.querySelectorAll('#graph-canvas .x6-node[data-cell-id]')]
-        .filter((element) => !element.getAttribute('data-cell-id').startsWith('layer:'))
-        .map((element) => ({ id: element.getAttribute('data-cell-id'), rect: element.getBoundingClientRect() }))
-        .filter((item) => item.rect.width > 1 && item.rect.height > 1);
-      let best = null;
-      for (let i=0;i<nodes.length;i+=1) for (let j=i+1;j<nodes.length;j+=1) {
-        const left=Math.min(nodes[i].rect.left,nodes[j].rect.left)-8, top=Math.min(nodes[i].rect.top,nodes[j].rect.top)-8;
-        const right=Math.max(nodes[i].rect.right,nodes[j].rect.right)+8, bottom=Math.max(nodes[i].rect.bottom,nodes[j].rect.bottom)+8;
-        const contained=nodes.filter((node)=>node.rect.left>=left&&node.rect.right<=right&&node.rect.top>=top&&node.rect.bottom<=bottom).length;
-        const area=(right-left)*(bottom-top);
-        if(contained===2&&(!best||area<best.area)) best={ start:{x:Math.round(left),y:Math.round(top)}, end:{x:Math.round(right),y:Math.round(bottom)}, area };
-      }
-      return best;
+      const nodes = ['cli-dashboard', 'output-artifacts'].map((id) => document.querySelector('#graph-canvas .x6-node[data-cell-id="'+id+'"]')?.getBoundingClientRect()).filter(Boolean);
+      if (nodes.length !== 2) return null;
+      const left=Math.min(...nodes.map((rect)=>rect.left))-10, top=Math.min(...nodes.map((rect)=>rect.top))-10;
+      const right=Math.max(...nodes.map((rect)=>rect.right))+10, bottom=Math.max(...nodes.map((rect)=>rect.bottom))+10;
+      return { start:{x:Math.round(left),y:Math.round(top)}, end:{x:Math.round(right),y:Math.round(bottom)} };
     })()`);
     await drag(marquee?.start, marquee?.end);
     const marqueeSelectedCount = await evaluate("document.querySelectorAll('.x6-widget-selection-box').length");
@@ -293,6 +319,28 @@ async function runSmoke(window) {
     await shortcut("Z");
     await shortcut("Z");
 
+    smokeStep = "paste image into selected node";
+    await evaluate(`(async () => {
+      delete document.documentElement.dataset.lastImageImport;
+      delete document.documentElement.dataset.lastImageNode;
+      document.querySelector('#node-list button[data-node-id="cli-dashboard"]')?.click();
+      const response = await fetch('./assets/mindmap.png');
+      const blob = await response.blob();
+      const transfer = new DataTransfer();
+      transfer.items.add(new File([blob], 'mindmap-smoke.png', { type: 'image/png' }));
+      const event = new Event('paste', { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'clipboardData', { value: transfer });
+      document.dispatchEvent(event);
+    })()`);
+    let imagePasteApplied = false;
+    for (let attempt = 0; attempt < 80 && !imagePasteApplied; attempt += 1) {
+      imagePasteApplied = await evaluate(`document.documentElement.dataset.lastImageNode === 'cli-dashboard' && Boolean(document.querySelector('[data-node-field="image:alt"]'))`);
+      if (!imagePasteApplied) await pause(50);
+    }
+    await shortcut("Z");
+    await pause(160);
+    const imagePasteUndoRestored = await evaluate(`!document.querySelector('[data-node-field="image:alt"]')`);
+
     await click(await pointFor('#node-list button[data-node-id="cli-dashboard"]'));
     await click(await pointFor('#node-list button[data-node-id="output-artifacts"]'), ["shift"]);
 
@@ -304,14 +352,19 @@ async function runSmoke(window) {
     const nodesAfterGroupUndo = await semanticNodeCount();
 
     smokeStep = "copy paste";
+    await click(await pointFor('#node-list button[data-node-id="cli-dashboard"]'));
+    await click(await pointFor('#node-list button[data-node-id="output-artifacts"]'), ["shift"]);
+    const copySelectionCount = await evaluate("document.querySelectorAll('.x6-widget-selection-box').length");
     await evaluate("document.querySelector('#graph-canvas')?.focus()");
     await shortcut("C");
+    const copiedNodeCount = await evaluate('Number(document.documentElement.dataset.lastCopyCount || 0)');
     await shortcut("V");
+    await pause(180);
     let nodesAfterPaste = await semanticNodeCount();
     const pasteShortcutSeen = await evaluate('document.documentElement.dataset.lastShortcut === "paste"');
     if (nodesAfterPaste !== initial.nodes + 2) {
-      const duplicatePoint = await pointFor('[data-node-action="duplicate"]');
-      if (duplicatePoint) await click(duplicatePoint);
+      await evaluate("document.dispatchEvent(new Event('paste', { bubbles: true, cancelable: true }))");
+      await pause(180);
       nodesAfterPaste = await semanticNodeCount();
     }
     smokeStep = "undo paste";
@@ -333,6 +386,8 @@ async function runSmoke(window) {
       await click(addPoint);
       nodesAfterAdd = await semanticNodeCount();
     }
+    await evaluate(`document.querySelector('.inline-editor__input--title')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))`);
+    await pause(100);
     await shortcut("Z");
     await pause(140);
     const nodesAfterAddUndo = await semanticNodeCount();
@@ -340,14 +395,21 @@ async function runSmoke(window) {
     smokeStep = "space pan";
     await evaluate('document.querySelector("#fit")?.click()');
     await pause(100);
+    await evaluate(`(() => { const input=document.querySelector('#zoom-percent'); input.value='100'; input.dispatchEvent(new Event('change',{bubbles:true})); })()`);
+    await pause(100);
     const scrollBeforePan = await evaluate(`(() => { const element=document.querySelector('.x6-graph-scroller'); return { left: element?.scrollLeft || 0, top: element?.scrollTop || 0 }; })()`);
+    const nodeBeforePan = await pointFor('#graph-canvas .x6-node[data-cell-id="cli-dashboard"]');
     const panPoint = await pointFor("#graph-canvas");
-    window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Space" });
+    window.webContents.sendInputEvent({ type: "keyDown", keyCode: " " });
+    await pause(80);
+    const spacePanActivated = await evaluate('document.documentElement.dataset.spacePanActive === "true"');
     await drag(panPoint, { x: panPoint.x - 90, y: panPoint.y - 55 });
-    window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Space" });
+    window.webContents.sendInputEvent({ type: "keyUp", keyCode: " " });
     await pause(80);
     const scrollAfterPan = await evaluate(`(() => { const element=document.querySelector('.x6-graph-scroller'); return { left: element?.scrollLeft || 0, top: element?.scrollTop || 0 }; })()`);
-    const spacePanMoved = Math.abs(scrollAfterPan.left-scrollBeforePan.left) + Math.abs(scrollAfterPan.top-scrollBeforePan.top) > 10;
+    const nodeAfterPan = await pointFor('#graph-canvas .x6-node[data-cell-id="cli-dashboard"]');
+    const spacePanMoved = Math.abs(scrollAfterPan.left-scrollBeforePan.left) + Math.abs(scrollAfterPan.top-scrollBeforePan.top) > 10
+      || Math.abs((nodeAfterPan?.x || 0) - (nodeBeforePan?.x || 0)) + Math.abs((nodeAfterPan?.y || 0) - (nodeBeforePan?.y || 0)) > 10;
 
     smokeStep = "port connection";
     await evaluate('document.querySelector("#fit")?.click()');
@@ -405,9 +467,13 @@ async function runSmoke(window) {
       multiSelectedCount,
       inlineEditorOpened,
       inlineValueEntered,
+      inlineBoldApplied,
+      inlineToolbarPreservedEditor,
       inlineCommitState,
       inlineEditCommitted,
       inlineEditUndoRestored,
+      imagePasteApplied,
+      imagePasteUndoRestored,
       batchFontApplied,
       batchFillApplied,
       nodesAfterGroup,
@@ -415,6 +481,8 @@ async function runSmoke(window) {
       groupCreated: nodesAfterGroup === initial.nodes + 1,
       groupUndoRestored: nodesAfterGroupUndo === initial.nodes,
       nodesAfterPaste,
+      copySelectionCount,
+      copiedNodeCount,
       nodesAfterUndo,
       copyPasteAdded: nodesAfterPaste === initial.nodes + 2,
       pasteShortcutSeen,
@@ -424,6 +492,7 @@ async function runSmoke(window) {
       nodesAfterAddUndo,
       addUndoRestored: nodesAfterAddUndo === initial.nodes,
       spacePanMoved,
+      spacePanActivated,
       edgesAfterConnect,
       edgesAfterConnectUndo,
       connectionCreated: edgesAfterConnect === initial.edges + 1,
@@ -434,24 +503,54 @@ async function runSmoke(window) {
       screenshotPath
     });
     reportSmoke(result);
+    clearTimeout(watchdog);
     app.exit(result.ok ? 0 : 1);
   } catch (error) {
-    reportSmoke({ ok: false, error: error.message });
+    clearTimeout(watchdog);
+    reportSmoke({ ok: false, error: `${smokeStep}: ${error.message}` });
     app.exit(1);
   }
 }
 
 async function runVisualSmoke(window) {
   try {
+    window.showInactive();
     for (let attempt = 0; attempt < 180; attempt += 1) {
       const ready = await window.webContents.executeJavaScript(`Number(document.querySelector('#node-count')?.textContent || 0) > 0 && document.querySelectorAll('#graph-canvas .x6-node').length > 0`);
       if (ready) break;
       await new Promise((resolve) => setTimeout(resolve, 35));
     }
     await window.webContents.executeJavaScript('document.querySelector("#fit")?.click()');
-    await new Promise((resolve) => setTimeout(resolve, 180));
+    await new Promise((resolve) => setTimeout(resolve, 1200));
     const screenshotPath = process.env.MINDMAP_SCREENSHOT_PATH || path.join(process.env.TMPDIR || "/tmp", "mindmap-visual.png");
     await fs.writeFile(screenshotPath, (await window.webContents.capturePage()).toPNG());
+    await window.webContents.executeJavaScript(`document.querySelector('#node-list button[data-node-id="cli-dashboard"]')?.click()`);
+    await new Promise((resolve) => setTimeout(resolve, 650));
+    const editPoint = await window.webContents.executeJavaScript(`(() => {
+      const element = document.querySelector('#graph-canvas .x6-node[data-cell-id="cli-dashboard"]');
+      if (!element) return null;
+      const rect = element.getBoundingClientRect();
+      return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) };
+    })()`);
+    if (editPoint) {
+      for (const clickCount of [1, 2]) {
+        window.webContents.sendInputEvent({ type: "mouseDown", x: editPoint.x, y: editPoint.y, button: "left", clickCount });
+        window.webContents.sendInputEvent({ type: "mouseUp", x: editPoint.x, y: editPoint.y, button: "left", clickCount });
+        await new Promise((resolve) => setTimeout(resolve, 55));
+      }
+    }
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      const editingReady = await window.webContents.executeJavaScript(`(() => {
+        const toolbar = document.querySelector('#selection-toolbar');
+        const style = toolbar ? getComputedStyle(toolbar) : null;
+        return Boolean(document.querySelector('.inline-editor')) && Boolean(toolbar) && !toolbar.hidden && style.display !== 'none' && Number(style.opacity || 1) > 0;
+      })()`);
+      if (editingReady) break;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const toolbarScreenshotPath = screenshotPath.endsWith(".png") ? screenshotPath.replace(/\.png$/i, "-toolbar.png") : `${screenshotPath}-toolbar.png`;
+    await fs.writeFile(toolbarScreenshotPath, (await window.webContents.capturePage()).toPNG());
     const result = await window.webContents.executeJavaScript(`(() => {
       const topbar = document.querySelector('.topbar');
       const statusbar = document.querySelector('.statusbar');
@@ -462,6 +561,14 @@ async function runVisualSmoke(window) {
       const sampleTitle = sampleNode?.querySelector('text:nth-of-type(2)');
       const sampleNodeRect = sampleNode?.getBoundingClientRect();
       const sampleTitleRect = sampleTitle?.getBoundingClientRect();
+      const toolbar = document.querySelector('#selection-toolbar');
+      const editor = document.querySelector('.inline-editor');
+      const toolbarRect = toolbar?.getBoundingClientRect();
+      const editorRect = editor?.getBoundingClientRect();
+      const toolbarStyle = toolbar ? getComputedStyle(toolbar) : null;
+      const overlaps = toolbarRect && editorRect
+        ? toolbarRect.left < editorRect.right && toolbarRect.right > editorRect.left && toolbarRect.top < editorRect.bottom && toolbarRect.bottom > editorRect.top
+        : false;
       return {
         ok: Number(document.querySelector('#node-count')?.textContent || 0) > 0,
         innerWidth,
@@ -476,6 +583,27 @@ async function runVisualSmoke(window) {
         edges: Number(document.querySelector('#edge-count')?.textContent || 0),
         renderedNodes: [...document.querySelectorAll('#graph-canvas .x6-node[data-cell-id]')]
           .filter((element) => !element.getAttribute('data-cell-id').startsWith('layer:')).length,
+        renderedEdges: document.querySelectorAll('#graph-canvas .x6-edge[data-cell-id]').length,
+        inlineEditorActive: Boolean(editor),
+        inlineEditorVisible: Boolean(editorRect) && getComputedStyle(editor).display !== 'none' && getComputedStyle(editor).visibility !== 'hidden' && editorRect.width > 0 && editorRect.height > 0 && editorRect.left >= 0 && editorRect.right <= innerWidth && editorRect.top >= 0 && editorRect.bottom <= innerHeight,
+        inlineEditingClass: shell.classList.contains('is-inline-editing'),
+        structuralControlsDisplay: getComputedStyle(document.querySelector('[data-structural-controls]')).display,
+        edgePaths: [...document.querySelectorAll('#graph-canvas .x6-edge[data-cell-id] path')].slice(0, 3).map((path) => ({ d: path.getAttribute('d'), stroke: path.getAttribute('stroke'), opacity: getComputedStyle(path).opacity })),
+        toolbar: toolbarRect ? {
+          visible: !toolbar.hidden && toolbarStyle.display !== 'none' && toolbarStyle.visibility !== 'hidden' && Number(toolbarStyle.opacity || 1) > 0,
+          display: toolbarStyle.display,
+          opacity: toolbarStyle.opacity,
+          left: Math.round(toolbarRect.left),
+          top: Math.round(toolbarRect.top),
+          right: Math.round(toolbarRect.right),
+          bottom: Math.round(toolbarRect.bottom),
+          width: Math.round(toolbarRect.width),
+          height: Math.round(toolbarRect.height),
+          scrollWidth: toolbar.scrollWidth,
+          clientWidth: toolbar.clientWidth,
+          withinViewport: toolbarRect.left >= 0 && toolbarRect.right <= innerWidth + 1 && toolbarRect.top >= 0 && toolbarRect.bottom <= innerHeight + 1,
+          overlapsEditor: overlaps,
+        } : null,
         sampleTypography: sampleTitle ? {
           x: sampleTitle.getAttribute('x'),
           y: sampleTitle.getAttribute('y'),
@@ -492,6 +620,7 @@ async function runVisualSmoke(window) {
       };
     })()`);
     result.screenshotPath = screenshotPath;
+    result.toolbarScreenshotPath = toolbarScreenshotPath;
     console.log(`MINDMAP_VISUAL_RESULT ${JSON.stringify(result)}`);
     app.exit(result.ok ? 0 : 1);
   } catch (error) {

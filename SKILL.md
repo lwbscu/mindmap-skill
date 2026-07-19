@@ -19,6 +19,9 @@ Use this skill for architecture diagrams of models, systems, repositories, servi
 - Prefer stable architecture roles over decorative categories: `entrypoint`, `interface`, `module`, `service`, `model`, `data`, `storage`, `process`, `external`, `risk`, `unknown`.
 - Use status tags when they help review state: `implemented`, `external`, `planned`, `unknown`, `risk`. Put visible labels such as `拟介入` or `待确认` in node text when the exported map needs to show them.
 - Keep the diagram easy to scan: 5-15 primary nodes first, short labels, large text, and explicit arrows that do not cover text.
+- Default visual contract: white canvas, black primary text, 20px or larger primary labels, restrained pastel layers, stable node dimensions, and short relation labels.
+- Default editing contract: preserve supported character-level rich text, allow informative embedded PNG/JPEG/WebP images with useful alt text, and keep pure image nodes connectable on all four sides.
+- Default routing contract: architecture/dependency edges use automatic orthogonal obstacle avoidance; MindMap edges use automatic smooth curves. Do not hand-write waypoint collections unless the user has explicitly confirmed and locked a route.
 - Use the MindMap app artifact by default: diagram JSON plus Electron desktop preview, three shared-data views, in-place text editing, XMind-style `Tab`/`Enter` topic creation, floating multi-node typography/color controls, marquee/lasso selection, relation creation, searchable nodes/edges, auto-layout, and SVG/PNG/PDF/JSON/HTML/Mermaid export.
 - Never require a local notes directory for normal MindMap work.
 
@@ -75,7 +78,7 @@ Read [diagram-schema.md](references/diagram-schema.md). Write a `mindmap-app/v1`
 }
 ```
 
-Use explicit node coordinates and edge waypoints when needed to keep arrows from crossing labels. Keep labels short; put details in `summary`, `evidence`, `risks`, and `links` as metadata, while visible content is edited directly on canvas nodes.
+Use stable node coordinates and let the App calculate routes. Keep labels short; put details in `summary`, `evidence`, `risks`, and `links` as metadata, while visible content is edited directly on canvas nodes. Use `richText` only when character-level emphasis adds meaning, and always keep `title` / `subtitle` synchronized. Put images in top-level `assets` and reference them from `node.image`; never emit SVG uploads or unsafe data URLs.
 
 For evidence-backed diagrams, add compact metadata that the runtime validator can check:
 
@@ -93,7 +96,7 @@ npm run app:render -- examples/<name>.diagram.json
 npm run app:build
 ```
 
-Open the Electron desktop window for interactive review. It uses the `mindmap://` local protocol rather than a `127.0.0.1` server. Double-click a node or press `F2` to edit title and description directly. Use the floating toolbar for quick font size, bold, alignment, text/fill/border color changes, and the inspector for full style control. In MindMap view, `Tab` creates a child and `Enter` creates a sibling. Also use **打开**, the three-view switcher, search, navigator, minimap, marquee/lasso multi-select, group dragging, port relation tool, pointer-centered zoom, copy/paste/undo, and automatic layout. Export the current view as SVG, PNG, PDF, JSON, standalone HTML, or Mermaid when a portable artifact is needed.
+Open the Electron desktop window for interactive review. It uses the `mindmap://` local protocol rather than a `127.0.0.1` server. Double-click a node or press `F2` to edit title and description directly. The reference-style floating toolbar preserves character selection and supports lists, alignment, bold, strike, italic, underline, links, inline code, fonts, size, text/highlight colors, node colors, image insertion, and notes. Paste, upload, or drop informative images into a selected node or empty canvas; use the inspector for placement, fit, opacity, alt text, replacement, and removal. In MindMap view, `Tab` creates a child and `Enter` creates a sibling. Also use **打开**, the three-view switcher, search, navigator, minimap, marquee/lasso multi-select, group dragging, port relation tool, pointer-centered zoom, copy/paste/undo, and automatic layout. Export the current view as SVG, PNG, PDF, JSON, standalone HTML, or Mermaid when a portable artifact is needed.
 
 ### 5. Validate
 
@@ -132,4 +135,7 @@ Before finalizing, read [quality-ratchet.md](references/quality-ratchet.md) and 
 - confident claims have evidence, and unknowns are marked
 - the JSON follows `mindmap-app/v1`
 - arrows are readable and do not cover node text
+- orthogonal routes avoid nodes/images and labels do not collide
+- rich text and embedded images survive every supported export
+- automatic routes remain automatic unless a user-confirmed route is locked
 - local preview or render checks were run or the blocker is reported

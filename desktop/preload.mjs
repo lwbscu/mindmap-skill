@@ -14,12 +14,11 @@ contextBridge.exposeInMainWorld("mindmapDesktop", {
   platform: process.platform,
   isDesktop: true,
   openJson: () => ipcRenderer.invoke(channels.openJson),
-  saveJson: ({ filePath, diagram } = {}) => ipcRenderer.invoke(channels.saveJson, {
-    filePath: typeof filePath === "string" ? filePath : "",
+  saveJson: ({ diagram } = {}) => ipcRenderer.invoke(channels.saveJson, {
     diagram: cloneJson(diagram)
   }),
-  saveJsonAs: ({ filePath, diagram } = {}) => ipcRenderer.invoke(channels.saveJsonAs, {
-    filePath: typeof filePath === "string" ? filePath : "",
+  saveJsonAs: ({ suggestedName, diagram } = {}) => ipcRenderer.invoke(channels.saveJsonAs, {
+    suggestedName: typeof suggestedName === "string" ? suggestedName : "mindmap.diagram.json",
     diagram: cloneJson(diagram)
   })
 });

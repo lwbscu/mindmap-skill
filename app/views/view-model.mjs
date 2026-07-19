@@ -63,6 +63,10 @@ function layoutFromDiagram(diagram) {
         "waypoints",
         "labelAt",
         "labelRatio",
+        "routeMode",
+        "routeStyle",
+        "lockedRoute",
+        "curveControlPoints",
         "stroke",
         "strokeWidth",
         "hidden",
@@ -153,8 +157,8 @@ function normalizeStringArray(value) {
 function defaultView(diagram, type) {
   const profile = getLayoutProfile(type);
   const modeOptions = type === "mindmap"
-    ? { rootId: diagram.nodes?.[0]?.id ?? null, layout: "both" }
-    : {};
+    ? { rootId: diagram.nodes?.[0]?.id ?? null, layout: "both", routing: "curved" }
+    : { routing: "orthogonal" };
   const layout = layoutFromDiagram(fallbackLayout(diagram, type, modeOptions));
   return {
     id: type,
@@ -209,7 +213,9 @@ function normalizeView(rawView, diagram, existingIds = new Set()) {
     collapsedNodes: normalizeStringArray(rawView?.collapsedNodes ?? fallback.collapsedNodes),
     fixedNodes: normalizeStringArray(rawView?.fixedNodes ?? fallback.fixedNodes),
     filters: rawView?.filters && typeof rawView.filters === "object" ? clone(rawView.filters) : clone(fallback.filters),
-    modeOptions: rawView?.modeOptions && typeof rawView.modeOptions === "object" ? clone(rawView.modeOptions) : clone(fallback.modeOptions)
+    modeOptions: rawView?.modeOptions && typeof rawView.modeOptions === "object"
+      ? { ...clone(fallback.modeOptions), ...clone(rawView.modeOptions) }
+      : clone(fallback.modeOptions)
   };
 }
 

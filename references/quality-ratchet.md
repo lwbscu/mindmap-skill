@@ -28,6 +28,10 @@ Use this gate before finalizing a MindMap diagram or app change.
    - Node `status` and edge `relation` values use known tags.
    - Text is large enough for whole-diagram review.
    - Arrows do not cover node titles, subtitles, or edge labels.
+   - Architecture/dependency routes do not pass through non-terminal nodes or images.
+   - MindMap branches use readable curved fan-out; parallel edges use separate channels.
+   - Rich text compatibility fields remain synchronized and unsafe links are rejected.
+   - Every image has information value, safe embedded bytes, and useful `alt` text.
 
 5. Preview and export
    - `npm run check` passes.
@@ -37,6 +41,7 @@ Use this gate before finalizing a MindMap diagram or app change.
    - `npm run app:visual` passes desktop, tablet, narrow, and mobile screenshot checks.
    - `npm run app:render -- examples/<name>.diagram.json` passes for the target diagram.
    - Local app preview or rendered SVG/HTML was inspected, or the blocker is reported.
+   - Images and character styles appear in SVG/PNG/PDF/HTML exports; Mermaid has a readable text fallback.
 
 6. Public release
    - No local machine paths, temporary files, generated `dist/`, or private workspace artifacts are committed.
@@ -50,6 +55,9 @@ Use this gate before finalizing a MindMap diagram or app change.
 - Hiding uncertainty behind vague labels.
 - Using tiny text that only works when zoomed in.
 - Letting arrows cross important text.
+- Hand-writing many waypoints for routes the app should calculate.
+- Adding blurred decorative images or images without alt text.
+- Using unsafe HTML, SVG uploads, or `javascript:` links in diagram content.
 - Publishing generated artifacts as source.
 - Leaving obsolete workflow instructions in docs.
 - Adding evidence/status metadata that is not validated by tests.

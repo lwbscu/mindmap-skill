@@ -1,6 +1,7 @@
 import { filterDependencies, stableEdgeId } from "./graph-query.mjs";
-import { fallbackLayout, routeEdgesOrthogonally } from "./layout-profiles.mjs";
+import { fallbackLayout } from "./layout-profiles.mjs";
 import { ensureViews, getActiveView } from "./view-model.mjs";
+import { routeDiagramEdges } from "../routing/smart-router.mjs";
 
 function clone(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
@@ -131,7 +132,16 @@ export function resolveView(diagram, viewIdOrType, options = {}) {
   if (view.type === "dependency") resolved = resolveDependency(resolved, view);
   if (view.type === "mindmap") resolved = resolveMindmap(resolved, view);
   resolved = maybeApplyFallbackLayout(resolved, view, options);
-  if (options.routeEdges) resolved = routeEdgesOrthogonally(resolved);
+  if (options.routeEdges) {
+    resolved.edges = routeDiagramEdges({
+      nodes: resolved.nodes,
+      edges: resolved.edges,
+      layers: resolved.layers,
+      canvas: resolved.canvas,
+      viewType: view.type,
+      options: { routing: view.modeOptions?.routing },
+    });
+  }
   resolved.activeView = {
     id: view.id,
     type: view.type,
