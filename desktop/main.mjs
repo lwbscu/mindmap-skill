@@ -306,14 +306,14 @@ async function runSmoke(window) {
     const inlineEditorOpened = await evaluate('Boolean(document.querySelector(".inline-editor"))');
     let inlineValueEntered = false;
     for (let attempt = 0; attempt < 3 && !inlineValueEntered; attempt += 1) {
-      await evaluate(`(() => { const input=document.querySelector('.inline-editor__input--title'); if(!input) return false; input.focus(); const range=document.createRange(); range.selectNodeContents(input); const selection=getSelection(); selection.removeAllRanges(); selection.addRange(range); return document.activeElement === input; })()`);
+      await evaluate(`(() => { const input=document.querySelector('.inline-editor__prosemirror--title'); if(!input) return false; input.focus(); const range=document.createRange(); range.selectNodeContents(input); const selection=getSelection(); selection.removeAllRanges(); selection.addRange(range); return document.activeElement === input; })()`);
       await pause(100);
       await window.webContents.insertText("CLI / Dashboard 已编辑");
       await pause(80);
-      inlineValueEntered = await evaluate('document.querySelector(".inline-editor__input--title")?.textContent === "CLI / Dashboard 已编辑"');
+      inlineValueEntered = await evaluate('document.querySelector(".inline-editor__prosemirror--title")?.textContent === "CLI / Dashboard 已编辑"');
     }
     await evaluate(`(() => {
-      const input = document.querySelector('.inline-editor__input--title');
+      const input = document.querySelector('.inline-editor__prosemirror--title');
       const text = input ? document.createTreeWalker(input, NodeFilter.SHOW_TEXT).nextNode() : null;
       if (!input || !text) return false;
       const range = document.createRange();
@@ -330,10 +330,66 @@ async function runSmoke(window) {
     await pause(120);
     const inlineBoldApplied = await evaluate(`(() => {
       const input = document.querySelector('.inline-editor__input--title');
-      return [...(input?.querySelectorAll('span') || [])].some((span) => Number(getComputedStyle(span).fontWeight) >= 700 && span.textContent.includes('CLI'));
+      return [...(input?.querySelectorAll('strong,b,span') || [])].some((span) => Number(getComputedStyle(span).fontWeight) >= 700 && span.textContent.includes('CLI'));
+    })()`);
+    await evaluate(`(() => { const input=document.querySelector('#quick-title-size'); input.value='28'; input.dispatchEvent(new Event('change',{bubbles:true})); })()`);
+    await pause(90);
+    await evaluate(`document.querySelector('#text-color-palette [data-color="#2563eb"]')?.click()`);
+    await pause(90);
+    await evaluate(`document.querySelector('#highlight-color-palette [data-color="#fef3c7"]')?.click()`);
+    await pause(120);
+    const localFormatState = await evaluate(`(() => {
+      const editor = document.querySelector('.inline-editor__prosemirror--title');
+      const styled = [...(editor?.querySelectorAll('span') || [])].find((span) => span.textContent.includes('CLI'));
+      const dashboardText = [...(document.createTreeWalker(editor, NodeFilter.SHOW_TEXT) ? (() => { const values=[]; const walker=document.createTreeWalker(editor, NodeFilter.SHOW_TEXT); let node; while((node=walker.nextNode())) values.push(node); return values; })() : [])].find((node) => node.textContent.includes('Dashboard'));
+      const selectedStyle = styled ? getComputedStyle(styled) : null;
+      const unselectedStyle = dashboardText?.parentElement ? getComputedStyle(dashboardText.parentElement) : null;
+      return {
+        fontSize: selectedStyle?.fontSize || '',
+        color: selectedStyle?.color || '',
+        backgroundColor: selectedStyle?.backgroundColor || '',
+        unselectedFontSize: unselectedStyle?.fontSize || '',
+        unselectedColor: unselectedStyle?.color || '',
+        unselectedBackgroundColor: unselectedStyle?.backgroundColor || ''
+      };
+    })()`);
+    const localFontSizeApplied = localFormatState.fontSize === "28px";
+    const localTextColorApplied = /rgb\(37,\s*99,\s*235\)/.test(localFormatState.color);
+    const localHighlightApplied = /rgb\(254,\s*243,\s*199\)/.test(localFormatState.backgroundColor);
+    const unselectedRunsUnchanged = localFormatState.unselectedFontSize !== "28px"
+      && !/rgb\(37,\s*99,\s*235\)/.test(localFormatState.unselectedColor)
+      && !/rgb\(254,\s*243,\s*199\)/.test(localFormatState.unselectedBackgroundColor);
+    await evaluate(`document.querySelector('.inline-editor__prosemirror')?.focus()`);
+    await shortcut("Z");
+    const textUndoWorked = await evaluate(`(() => {
+      const span=[...document.querySelectorAll('.inline-editor__prosemirror--title span')].find((item)=>item.textContent.includes('CLI'));
+      return Boolean(span) && !/rgb\(254,\s*243,\s*199\)/.test(getComputedStyle(span).backgroundColor);
+    })()`);
+    await evaluate(`document.querySelector('#highlight-color-palette [data-color="#fef3c7"]')?.click()`);
+    const textClipboardStayedLocal = await evaluate(`(() => {
+      const editor=document.querySelector('.inline-editor__prosemirror--title');
+      const text=[...document.createTreeWalker(editor,NodeFilter.SHOW_TEXT) ? (()=>{const result=[];const walker=document.createTreeWalker(editor,NodeFilter.SHOW_TEXT);let node;while((node=walker.nextNode()))result.push(node);return result;})() : []].find((node)=>node.textContent.includes('CLI'));
+      if(!editor||!text)return false;
+      const range=document.createRange(); range.setStart(text,0); range.setEnd(text,3);
+      const selection=getSelection(); selection.removeAllRanges(); selection.addRange(range);
+      const transfer=new DataTransfer();
+      editor.dispatchEvent(new ClipboardEvent('copy',{bubbles:true,cancelable:true,clipboardData:transfer}));
+      selection.removeAllRanges(); selection.addRange(range);
+      editor.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:transfer}));
+      return editor.textContent==='CLI / Dashboard 已编辑' && Boolean(transfer.getData('application/x-mindmap-rich-text'));
+    })()`);
+    const imeSafe = await evaluate(`(() => {
+      const editor=document.querySelector('.inline-editor__prosemirror');
+      if(!editor)return false;
+      editor.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true,data:'中'}));
+      editor.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true,isComposing:true}));
+      editor.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true,isComposing:true}));
+      const stayedOpen=Boolean(document.querySelector('.inline-editor'));
+      editor.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true,data:'中'}));
+      return stayedOpen;
     })()`);
     const inlineToolbarPreservedEditor = await evaluate('Boolean(document.querySelector(".inline-editor")) && !document.querySelector("#selection-toolbar")?.hidden');
-    await evaluate(`(() => { const input=document.querySelector('.inline-editor__input--title'); input?.focus(); input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); })()`);
+    await evaluate(`(() => { const input=document.querySelector('.inline-editor__prosemirror--title'); input?.focus(); input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); })()`);
     await pause(140);
     const inlineCommitState = await evaluate(`(() => ({
       editorOpen: Boolean(document.querySelector('.inline-editor')),
@@ -368,33 +424,51 @@ async function runSmoke(window) {
     const multiSelectedCount = await evaluate("document.querySelectorAll('.x6-widget-selection-box').length");
 
     smokeStep = "batch typography and color";
-    await evaluate(`(() => { const input=document.querySelector('#quick-title-size'); input.value='24'; input.dispatchEvent(new Event('change',{bubbles:true})); })()`);
+    await evaluate(`document.querySelector('[data-inspector-tab="style"]')?.click()`);
+    await pause(80);
+    await evaluate(`(() => { const input=document.querySelector('[data-node-field="titleSize"]'); if(!input)return false; input.value='24'; input.dispatchEvent(new Event('change',{bubbles:true})); return true; })()`);
     await pause(140);
     const batchFontApplied = await evaluate(`['cli-dashboard','output-artifacts'].every((id) => document.querySelector('#graph-canvas .x6-node[data-cell-id="'+id+'"] text:nth-of-type(2)')?.getAttribute('font-size') === '24')`);
-    await evaluate(`(() => { const input=document.querySelector('#quick-fill-color'); input.value='#fff4cc'; input.dispatchEvent(new Event('change',{bubbles:true})); })()`);
+    await evaluate(`(() => { const input=document.querySelector('[data-node-field="fill"]'); if(!input)return false; input.value='#fff4cc'; input.dispatchEvent(new Event('change',{bubbles:true})); return true; })()`);
     await pause(140);
     const batchFillApplied = await evaluate(`['cli-dashboard','output-artifacts'].every((id) => document.querySelector('#graph-canvas .x6-node[data-cell-id="'+id+'"] rect')?.getAttribute('fill') === '#fff4cc')`);
     await shortcut("Z");
     await shortcut("Z");
 
     smokeStep = "paste image into selected node";
-    await evaluate(`(async () => {
+    const imagePasteDispatch = await evaluate(`(async () => {
       delete document.documentElement.dataset.lastImageImport;
       delete document.documentElement.dataset.lastImageNode;
       document.querySelector('#node-list button[data-node-id="cli-dashboard"]')?.click();
-      const response = await fetch('./assets/mindmap.png');
-      const blob = await response.blob();
+      const canvas = document.createElement('canvas');
+      canvas.width = 32; canvas.height = 32;
+      const context = canvas.getContext('2d');
+      context.fillStyle = '#7c3aed'; context.fillRect(0, 0, 32, 32);
+      context.fillStyle = '#ffffff'; context.fillRect(8, 8, 16, 16);
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
       const transfer = new DataTransfer();
       transfer.items.add(new File([blob], 'mindmap-smoke.png', { type: 'image/png' }));
-      const event = new Event('paste', { bubbles: true, cancelable: true });
-      Object.defineProperty(event, 'clipboardData', { value: transfer });
-      document.dispatchEvent(event);
+      const event = new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer });
+      const target = document.querySelector('#graph-canvas');
+      const dispatched = target?.dispatchEvent(event);
+      return {
+        dispatched,
+        items: [...transfer.items].map((item) => ({ kind: item.kind, type: item.type })),
+        files: [...transfer.files].map((file) => ({ name: file.name, type: file.type, size: file.size })),
+        selected: document.querySelectorAll('.x6-widget-selection-box').length
+      };
     })()`);
     let imagePasteApplied = false;
-    for (let attempt = 0; attempt < 80 && !imagePasteApplied; attempt += 1) {
-      imagePasteApplied = await evaluate(`document.documentElement.dataset.lastImageNode === 'cli-dashboard' && Boolean(document.querySelector('[data-node-field="image:alt"]'))`);
+    for (let attempt = 0; attempt < 240 && !imagePasteApplied; attempt += 1) {
+      imagePasteApplied = await evaluate(`document.documentElement.dataset.lastImageNode === 'cli-dashboard'`);
       if (!imagePasteApplied) await pause(50);
     }
+    if (imagePasteApplied) {
+      await evaluate(`document.querySelector('[data-inspector-tab="details"]')?.click()`);
+      await pause(100);
+      imagePasteApplied = await evaluate(`Boolean(document.querySelector('[data-node-field="image:alt"]'))`);
+    }
+    const imagePasteError = imagePasteApplied ? "" : await evaluate(`document.querySelector('#error-message')?.textContent || ''`);
     await shortcut("Z");
     await pause(160);
     const imagePasteUndoRestored = await evaluate(`!document.querySelector('[data-node-field="image:alt"]')`);
@@ -598,10 +672,19 @@ async function runSmoke(window) {
       inlineValueEntered,
       inlineBoldApplied,
       inlineToolbarPreservedEditor,
+      localFontSizeApplied,
+      localTextColorApplied,
+      localHighlightApplied,
+      unselectedRunsUnchanged,
+      textUndoWorked,
+      textClipboardStayedLocal,
+      imeSafe,
       inlineCommitState,
       inlineEditCommitted,
       inlineEditUndoRestored,
       imagePasteApplied,
+      imagePasteError,
+      imagePasteDispatch,
       imagePasteUndoRestored,
       batchFontApplied,
       batchFillApplied,
@@ -696,6 +779,37 @@ async function runVisualSmoke(window) {
     await new Promise((resolve) => setTimeout(resolve, 500));
     const toolbarScreenshotPath = screenshotPath.endsWith(".png") ? screenshotPath.replace(/\.png$/i, "-toolbar.png") : `${screenshotPath}-toolbar.png`;
     await fs.writeFile(toolbarScreenshotPath, (await window.webContents.capturePage()).toPNG());
+    const controlMetrics = await window.webContents.executeJavaScript(`(() => {
+      const within = (rect) => Boolean(rect) && rect.left >= 0 && rect.top >= 0 && rect.right <= innerWidth + 1 && rect.bottom <= innerHeight + 1;
+      const font = document.querySelector('#quick-font-family')?.getBoundingClientRect();
+      const size = document.querySelector('#quick-title-size')?.getBoundingClientRect();
+      const toolbar = document.querySelector('#selection-toolbar');
+      const style = toolbar ? getComputedStyle(toolbar) : null;
+      return {
+        fontMenuWithinViewport: within(font),
+        sizeMenuWithinViewport: within(size),
+        singleLineScrollable: style?.flexWrap === 'nowrap' && (toolbar.scrollWidth <= toolbar.clientWidth + 1 || ['auto','scroll'].includes(style.overflowX))
+      };
+    })()`);
+    await window.webContents.executeJavaScript(`document.querySelector('#quick-text-color-menu').open=true`);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    const textPaletteMetrics = await window.webContents.executeJavaScript(`(() => {
+      const palette=document.querySelector('#text-color-palette')?.getBoundingClientRect();
+      const editor=document.querySelector('.inline-editor')?.getBoundingClientRect();
+      const within=Boolean(palette)&&palette.left>=0&&palette.top>=0&&palette.right<=innerWidth+1&&palette.bottom<=innerHeight+1;
+      const overlaps=Boolean(palette&&editor)&&palette.left<editor.right&&palette.right>editor.left&&palette.top<editor.bottom&&palette.bottom>editor.top;
+      return {within,overlaps};
+    })()`);
+    await window.webContents.executeJavaScript(`(() => { document.querySelector('#quick-text-color-menu').open=false; document.querySelector('#quick-highlight-menu').open=true; })()`);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    const highlightPaletteMetrics = await window.webContents.executeJavaScript(`(() => {
+      const palette=document.querySelector('#highlight-color-palette')?.getBoundingClientRect();
+      const editor=document.querySelector('.inline-editor')?.getBoundingClientRect();
+      const within=Boolean(palette)&&palette.left>=0&&palette.top>=0&&palette.right<=innerWidth+1&&palette.bottom<=innerHeight+1;
+      const overlaps=Boolean(palette&&editor)&&palette.left<editor.right&&palette.right>editor.left&&palette.top<editor.bottom&&palette.bottom>editor.top;
+      return {within,overlaps};
+    })()`);
+    await window.webContents.executeJavaScript(`document.querySelector('#quick-highlight-menu').open=false`);
     const result = await window.webContents.executeJavaScript(`(() => {
       const topbar = document.querySelector('.topbar');
       const statusbar = document.querySelector('.statusbar');
@@ -732,7 +846,7 @@ async function runVisualSmoke(window) {
         inlineEditorActive: Boolean(editor),
         inlineEditorVisible: Boolean(editorRect) && getComputedStyle(editor).display !== 'none' && getComputedStyle(editor).visibility !== 'hidden' && editorRect.width > 0 && editorRect.height > 0 && editorRect.left >= 0 && editorRect.right <= innerWidth && editorRect.top >= 0 && editorRect.bottom <= innerHeight,
         inlineEditingClass: shell.classList.contains('is-inline-editing'),
-        structuralControlsDisplay: getComputedStyle(document.querySelector('[data-structural-controls]')).display,
+        structuralControlsDisplay: getComputedStyle(document.querySelector('.toolbar-mode-node')).display,
         edgePaths: [...document.querySelectorAll('#graph-canvas .x6-edge[data-cell-id] path')].slice(0, 3).map((path) => ({ d: path.getAttribute('d'), stroke: path.getAttribute('stroke'), opacity: getComputedStyle(path).opacity })),
         toolbar: toolbarRect ? {
           visible: !toolbar.hidden && toolbarStyle.display !== 'none' && toolbarStyle.visibility !== 'hidden' && Number(toolbarStyle.opacity || 1) > 0,
@@ -764,6 +878,11 @@ async function runVisualSmoke(window) {
         layerBounds: layerRects.length ? { left: Math.round(Math.min(...layerRects.map((rect) => rect.left))), top: Math.round(Math.min(...layerRects.map((rect) => rect.top))), right: Math.round(Math.max(...layerRects.map((rect) => rect.right))), bottom: Math.round(Math.max(...layerRects.map((rect) => rect.bottom))) } : null
       };
     })()`);
+    Object.assign(result.toolbar, controlMetrics, {
+      textColorPaletteWithinViewport: textPaletteMetrics.within,
+      highlightPaletteWithinViewport: highlightPaletteMetrics.within,
+      paletteOverlapsEditor: textPaletteMetrics.overlaps || highlightPaletteMetrics.overlaps,
+    });
     result.screenshotPath = screenshotPath;
     result.toolbarScreenshotPath = toolbarScreenshotPath;
     console.log(`MINDMAP_VISUAL_RESULT ${JSON.stringify(result)}`);

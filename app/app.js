@@ -16,7 +16,7 @@ import {
   Group, Hand, HardDrive, Image as ImageIcon, Minus,
   MousePointer2, Network, PanelLeft, PanelRight, Plus, Redo2, Scan, Search,
   Save, Square, StickyNote, Trash2, TriangleAlert, Undo2, WandSparkles, Workflow, X, Pencil,
-  List, Link2, Code2, LayoutGrid, ImagePlus, MessageSquare,
+  List, Link2, Code2, LayoutGrid, ImagePlus, MessageSquare, Check, Unlink,
 } from "lucide";
 
 import "@antv/x6/dist/index.css";
@@ -31,7 +31,7 @@ import { command, createCommandHistory } from "./editor/command-history.mjs";
 import { copySubgraph, pasteSubgraph } from "./editor/clipboard.mjs";
 import { createInlineEditor } from "./editor/inline-editing.mjs";
 import { loadDraft, migrateLegacyDraft, saveDraft } from "./editor/draft-store.mjs";
-import { createRichTextFromPlainText, escapeHtml, normalizeNodeRichText } from "./editor/rich-text.mjs";
+import { createRichTextFromPlainText, escapeHtml, isSafeLink, normalizeNodeRichText, SAFE_RICH_TEXT_FONT_FAMILIES } from "./editor/rich-text.mjs";
 import { createInteractionStateMachine, InteractionState } from "./editor/interaction-state.mjs";
 import { boundsForItems, isSignificantDrag, selectByMarquee } from "./editor/selection-geometry.mjs";
 import { getCommonNodeStyle, normalizeNodeStyle } from "./editor/style-model.mjs";
@@ -61,6 +61,15 @@ const CARD_HEIGHT = 96;
 const GROUP_WIDTH = 440;
 const GROUP_HEIGHT = 260;
 const NODE_CLIPBOARD_TYPE = "application/x-mindmap-nodes";
+const RECENT_TEXT_COLORS_KEY = "mindmap:recent-text-colors:v1";
+const SAFE_FONT_OPTIONS = new Map([
+  ["Inter / 系统", "Inter, ui-sans-serif, system-ui, sans-serif"],
+  ["中文黑体", "Noto Sans CJK SC, Microsoft YaHei, PingFang SC, sans-serif"],
+  ["思源黑体", "Source Han Sans SC, Noto Sans CJK SC, sans-serif"],
+  ["Georgia", "Georgia, serif"],
+  ["等宽字体", "ui-monospace, SFMono-Regular, Consolas, monospace"],
+]);
+const SAFE_FONT_FAMILIES = new Set(SAFE_RICH_TEXT_FONT_FAMILIES);
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -108,6 +117,12 @@ let viewNavigation = [];
 let selectedBeforeViewSwitch = [];
 let inlineEditor = null;
 let activeRichTextMarks = {};
+let activeRichTextMixed = {};
+let activeRichTextCollapsed = true;
+let activeRichTextSelectionRect = null;
+let activeRichTextField = "title";
+let currentTextColor = "#172033";
+let currentHighlightColor = "#ede9fe";
 let edgeRouteSnapshot = null;
 let blueprintCache = null;
 let lastPasteEventAt = 0;
@@ -125,7 +140,7 @@ const lucideIcons = {
   HardDrive, Image: ImageIcon, Minus,
   MousePointer2, Network, PanelLeft, PanelRight, Plus, Redo2, Scan, Search,
   Save, Square, StickyNote, Trash2, TriangleAlert, Undo2, WandSparkles, Workflow, X, Pencil,
-  List, Link2, Code2, LayoutGrid, ImagePlus, MessageSquare,
+  List, Link2, Code2, LayoutGrid, ImagePlus, MessageSquare, Check, Unlink,
 };
 
 const statusLabels = {
@@ -163,6 +178,39 @@ function textOf(value, fallback = "") {
 function safeCssColor(value, fallback) {
   const color = String(value || "").trim();
   return /^#[0-9a-f]{3,8}$/i.test(color) || /^rgba?\([\d\s,.%]+\)$/i.test(color) ? color : fallback;
+}
+
+function loadRecentTextColors(kind) {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(`${RECENT_TEXT_COLORS_KEY}:${kind}`) || "[]");
+    return Array.isArray(parsed) ? parsed.filter((color) => safeCssColor(color, "") === color).slice(0, 5) : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberTextColor(kind, color) {
+  const normalized = safeCssColor(color, "");
+  if (!normalized) return;
+  const colors = [normalized, ...loadRecentTextColors(kind).filter((item) => item !== normalized)].slice(0, 5);
+  try { localStorage.setItem(`${RECENT_TEXT_COLORS_KEY}:${kind}`, JSON.stringify(colors)); } catch { /* UI preference only. */ }
+  renderRecentTextColors(kind, colors);
+}
+
+function renderRecentTextColors(kind, colors = loadRecentTextColors(kind)) {
+  const palette = $(kind === "text" ? "#text-color-palette" : "#highlight-color-palette");
+  const row = $(".recent-colors", palette);
+  if (!row) return;
+  const fallbacks = kind === "text" ? ["#172033", "#2563eb", "#7c3aed"] : ["#ede9fe", "#dbeafe", "#fef3c7"];
+  const values = [...colors, ...fallbacks.filter((color) => !colors.includes(color))].slice(0, 5);
+  row.replaceChildren(...values.map((color, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.color = color;
+    button.style.setProperty("--swatch", color);
+    button.setAttribute("aria-label", `${kind === "text" ? "最近颜色" : "最近高亮"} ${index + 1}`);
+    return button;
+  }));
 }
 
 function truncateText(value, maxLength) {
@@ -423,6 +471,7 @@ function x6NodeConfig(node, blueprint) {
   const imageOnly = hasImage && placement === "node";
   const topImage = hasImage && placement === "top";
   const imageAttrs = hasImage ? {
+    href: asset.dataUrl,
     xlinkHref: asset.dataUrl,
     opacity: Number(node.image?.opacity ?? 1),
     preserveAspectRatio: node.image?.fit === "cover" ? "xMidYMid slice" : "xMidYMid meet",
@@ -430,7 +479,7 @@ function x6NodeConfig(node, blueprint) {
       : placement === "top" ? { x: 10, y: 10, width: width - 20, height: Math.max(48, height * .52) }
         : placement === "background" ? { x: 2, y: 2, width: width - 4, height: height - 4, opacity: Math.min(.3, Number(node.image?.opacity ?? .22)) }
           : { x: 14, y: 18, width: 36, height: 36 })
-  } : { opacity: 0, xlinkHref: "" };
+  } : { opacity: 0, href: "", xlinkHref: "" };
   const renderedTitleY = imageOnly ? height - 22 : topImage ? Math.max(72, height * .66) : 28;
   const renderedSubtitleY = topImage ? Math.max(94, height * .78) : 54;
   return {
@@ -566,6 +615,9 @@ function applyRichTextToTextElement(element, richText, options = {}) {
   const namespace = "http://www.w3.org/2000/svg";
   const x = element.getAttribute("x") || "0";
   const defaultSize = Number(options.fontSize || element.getAttribute("font-size") || 14);
+  const highlightOwner = element.getAttribute("data-selector") || element.getAttribute("class") || "text";
+  const parent = element.parentNode;
+  for (const highlight of parent?.querySelectorAll?.(`[data-rich-highlight-owner="${CSS.escape(highlightOwner)}"]`) || []) highlight.remove();
   element.textContent = "";
   richText.blocks.forEach((block, blockIndex) => {
     const runs = block.runs?.length ? block.runs : [{ text: "", marks: {} }];
@@ -585,6 +637,7 @@ function applyRichTextToTextElement(element, richText, options = {}) {
       if (marks.fontWeight) tspan.setAttribute("font-weight", String(marks.fontWeight));
       if (marks.italic) tspan.setAttribute("font-style", "italic");
       if (marks.color) tspan.setAttribute("fill", marks.color);
+      if (marks.backgroundColor) tspan.dataset.richBackground = marks.backgroundColor;
       const decorations = [marks.underline ? "underline" : "", marks.strike ? "line-through" : ""].filter(Boolean);
       if (decorations.length) tspan.setAttribute("text-decoration", decorations.join(" "));
       if (marks.code) {
@@ -594,6 +647,26 @@ function applyRichTextToTextElement(element, richText, options = {}) {
       element.append(tspan);
     });
   });
+  for (const tspan of element.querySelectorAll("tspan[data-rich-background]")) {
+    try {
+      const box = tspan.getBBox();
+      if (!box.width || !box.height) continue;
+      const highlight = document.createElementNS(namespace, "rect");
+      highlight.setAttribute("x", String(box.x - 2));
+      highlight.setAttribute("y", String(box.y - 1));
+      highlight.setAttribute("width", String(box.width + 4));
+      highlight.setAttribute("height", String(box.height + 2));
+      highlight.setAttribute("rx", "3");
+      highlight.setAttribute("ry", "3");
+      highlight.setAttribute("fill", tspan.dataset.richBackground);
+      highlight.setAttribute("pointer-events", "none");
+      highlight.setAttribute("data-rich-highlight-owner", highlightOwner);
+      highlight.setAttribute("class", "mindmap-rich-highlight");
+      parent?.insertBefore(highlight, element);
+    } catch {
+      // The X6 view can be detached briefly while a graph rerender is in flight.
+    }
+  }
 }
 
 function renderNodeRichText(nodeId, richTextOverride = null) {
@@ -799,15 +872,33 @@ function initInlineEditing() {
     transformDraft: (draft) => ({ ...draft, title: String(draft.title || "").replace(/\s*\n\s*/g, " ") }),
     shouldStartFromKeyboard: () => false,
     isExternalEditorControl: (element) => Boolean(element?.closest?.("#selection-toolbar")),
-    onSelectionChange: ({ marks }) => {
+    onSelectionChange: ({ marks, mixed, collapsed, anchorRect, field }) => {
       activeRichTextMarks = marks || {};
+      activeRichTextMixed = mixed || {};
+      activeRichTextCollapsed = Boolean(collapsed);
+      activeRichTextSelectionRect = anchorRect ? {
+        left: anchorRect.left,
+        right: anchorRect.right,
+        top: anchorRect.top,
+        bottom: anchorRect.bottom,
+        width: anchorRect.width,
+        height: anchorRect.height,
+      } : null;
+      activeRichTextField = field || "title";
       updateRichTextToolbar();
       positionSelectionToolbar();
     },
     onDraftChange: ({ id, draft }) => renderNodeRichText(id, draft.richText),
     onActiveChange: (active) => {
       appShell.classList.toggle("is-inline-editing", active);
-      if (!active) activeRichTextMarks = {};
+      if (!active) {
+        activeRichTextMarks = {};
+        activeRichTextMixed = {};
+        activeRichTextCollapsed = true;
+        activeRichTextSelectionRect = null;
+        activeRichTextField = "title";
+        closeTextToolbarPopovers();
+      }
       updateSelectionUI();
     },
     onCommit: ({ id, values, richText, changed }) => {
@@ -832,13 +923,28 @@ function updateRichTextToolbar() {
   for (const button of $$('[data-rich-mark]')) {
     const key = button.dataset.richMark;
     const active = key === "fontWeight" ? Number(activeRichTextMarks.fontWeight || 400) >= 700 : Boolean(activeRichTextMarks[key]);
+    const mixed = Boolean(activeRichTextMixed[key]);
     button.classList.toggle("is-active", active);
-    button.setAttribute("aria-pressed", String(active));
+    button.classList.toggle("is-mixed", mixed);
+    button.setAttribute("aria-pressed", mixed ? "mixed" : String(active));
   }
-  if (activeRichTextMarks.fontFamily) $("#quick-font-family").value = activeRichTextMarks.fontFamily;
-  if (activeRichTextMarks.fontSize) $("#quick-title-size").value = String(activeRichTextMarks.fontSize);
-  if (activeRichTextMarks.color) $("#quick-text-color").value = activeRichTextMarks.color;
-  if (activeRichTextMarks.backgroundColor) $("#quick-highlight-color").value = activeRichTextMarks.backgroundColor;
+  const node = semanticNode(inlineEditor.getState()?.id);
+  const fallbackFont = SAFE_FONT_FAMILIES.values().next().value;
+  const fallbackSize = Number(activeRichTextField === "subtitle" ? node?.subtitleSize || 13 : node?.titleSize || 20);
+  const fontInput = $("#quick-font-family");
+  const sizeInput = $("#quick-title-size");
+  const selectedFont = activeRichTextMarks.fontFamily || fallbackFont;
+  const fontLabel = [...SAFE_FONT_OPTIONS.entries()].find(([, fontFamily]) => fontFamily === selectedFont)?.[0] || "";
+  fontInput.value = activeRichTextMixed.fontFamily ? "" : fontLabel;
+  fontInput.placeholder = activeRichTextMixed.fontFamily ? "混合" : "字体";
+  sizeInput.value = activeRichTextMixed.fontSize ? "" : String(activeRichTextMarks.fontSize || fallbackSize);
+  sizeInput.placeholder = activeRichTextMixed.fontSize ? "混合" : "字号";
+  if (activeRichTextMarks.color && !activeRichTextMixed.color) currentTextColor = activeRichTextMarks.color;
+  if (activeRichTextMarks.backgroundColor && !activeRichTextMixed.backgroundColor) currentHighlightColor = activeRichTextMarks.backgroundColor;
+  $(".color-a-text")?.style.setProperty("--current-color", currentTextColor);
+  $(".color-a-highlight")?.style.setProperty("--current-highlight", currentHighlightColor);
+  for (const button of $$("#text-color-palette [data-color]")) button.classList.toggle("is-current", button.dataset.color === currentTextColor);
+  for (const button of $$("#highlight-color-palette [data-color]")) button.classList.toggle("is-current", button.dataset.color === currentHighlightColor);
 }
 
 function currentViewIndex() {
@@ -1175,32 +1281,24 @@ function updateSelectionUI() {
 }
 
 function updateQuickStyleControls() {
-  const style = commonSelectedStyle();
-  const size = $("#quick-title-size");
-  const textColor = $("#quick-text-color");
-  const fill = $("#quick-fill-color");
-  const border = $("#quick-border-color");
-  if (!style || !size) return;
-  size.value = style.fontSize == null ? "" : String(style.fontSize);
-  textColor.value = style.textColor || "#172033";
-  fill.value = style.fill || "#ffffff";
-  border.value = style.borderColor || "#2563eb";
-  $("#quick-bold")?.classList.toggle("is-active", style.fontWeight != null && style.fontWeight >= 700);
-  for (const button of $$('[data-quick-align]')) button.classList.toggle("is-active", style.textAlign === button.dataset.quickAlign);
   const oneNode = selectedSemanticNodeIds().length === 1;
   $("#quick-edit").hidden = !oneNode;
   $("#quick-add-child").hidden = !oneNode || activeView()?.type !== "mindmap";
+  if (inlineEditor?.isActive()) updateRichTextToolbar();
 }
 
 function positionSelectionToolbar() {
   if (selectionToolbar.hidden || !graph) return;
   const shell = graphShell.getBoundingClientRect();
   const inlineOverlay = inlineEditor?.isActive() ? $(".inline-editor") : null;
-  const elements = inlineOverlay
+  const selectionRect = inlineOverlay && !activeRichTextCollapsed && activeRichTextSelectionRect
+    ? activeRichTextSelectionRect
+    : null;
+  const elements = inlineOverlay && !selectionRect
     ? [inlineOverlay]
     : selectedSemanticNodeIds().map((id) => graph.findViewByCell(graph.getCellById(id))?.container).filter(Boolean);
-  if (!elements.length) return;
-  const rects = elements.map((element) => element.getBoundingClientRect());
+  if (!selectionRect && !elements.length) return;
+  const rects = selectionRect ? [selectionRect] : elements.map((element) => element.getBoundingClientRect());
   const left = Math.min(...rects.map((rect) => rect.left));
   const right = Math.max(...rects.map((rect) => rect.right));
   const top = Math.min(...rects.map((rect) => rect.top));
@@ -1209,9 +1307,13 @@ function positionSelectionToolbar() {
   const toolbarHeight = selectionToolbar.offsetHeight || 42;
   const center = (left + right) / 2 - shell.left;
   const x = clamp(center, toolbarWidth / 2 + 8, shell.width - toolbarWidth / 2 - 8);
-  const above = top - shell.top - toolbarHeight - 8;
+  const editorBounds = inlineOverlay?.getBoundingClientRect();
+  const verticalAnchor = editorBounds || { top, bottom };
+  const above = verticalAnchor.top - shell.top - toolbarHeight - 8;
+  const below = verticalAnchor.bottom - shell.top + 8;
   selectionToolbar.style.left = `${Math.round(x)}px`;
-  selectionToolbar.style.top = `${Math.round(above >= 8 ? above : Math.min(shell.height - toolbarHeight - 8, bottom - shell.top + 8))}px`;
+  selectionToolbar.style.top = `${Math.round(above >= 8 ? above : Math.min(shell.height - toolbarHeight - 8, below))}px`;
+  requestAnimationFrame(positionTextToolbarPopovers);
 }
 
 function updateZoomUI() {
@@ -2348,7 +2450,9 @@ function runRichTextAction(action, options = {}) {
 
 function toggleRichTextMark(key, explicitValue) {
   return runRichTextAction(() => {
-    const current = key === "fontWeight" ? Number(activeRichTextMarks.fontWeight || 400) >= 700 : Boolean(activeRichTextMarks[key]);
+    const current = activeRichTextMixed[key]
+      ? false
+      : key === "fontWeight" ? Number(activeRichTextMarks.fontWeight || 400) >= 700 : Boolean(activeRichTextMarks[key]);
     const value = explicitValue !== undefined ? explicitValue : (key === "fontWeight" ? (current ? false : "700") : !current);
     inlineEditor.applyMark({ [key]: value });
   });
@@ -2366,6 +2470,83 @@ function cycleParagraphAlignment() {
     refreshIcons(button);
   }
   if (!runRichTextAction(() => inlineEditor.setBlockAlign(next))) applySelectedNodeStyle({ textAlign: next }, "修改文字对齐");
+}
+
+function closeTextToolbarPopovers(except = null) {
+  for (const details of $$("#selection-toolbar details[open]")) {
+    if (details !== except) details.open = false;
+  }
+  const linkPopover = $("#link-popover");
+  if (linkPopover && linkPopover !== except) {
+    linkPopover.hidden = true;
+    $("#quick-link")?.setAttribute("aria-expanded", "false");
+    $("#link-error").hidden = true;
+  }
+}
+
+function positionTextToolbarPopovers() {
+  const viewport = graphShell.getBoundingClientRect();
+  const editorRect = $(".inline-editor")?.getBoundingClientRect();
+  const panels = [
+    $("#quick-text-color-menu[open] .color-palette"),
+    $("#quick-highlight-menu[open] .color-palette"),
+    $("#link-popover:not([hidden])"),
+  ].filter(Boolean);
+  for (const panel of panels) {
+    panel.style.removeProperty("translate");
+    panel.classList.remove("is-flipped");
+    let rect = panel.getBoundingClientRect();
+    const minLeft = viewport.left + 8;
+    const maxRight = viewport.right - 8;
+    const dx = rect.left < minLeft ? minLeft - rect.left : rect.right > maxRight ? maxRight - rect.right : 0;
+    if (dx) panel.style.translate = `${Math.round(dx)}px 0`;
+    rect = panel.getBoundingClientRect();
+    const overlapsEditor = editorRect
+      && rect.left < editorRect.right && rect.right > editorRect.left
+      && rect.top < editorRect.bottom && rect.bottom > editorRect.top;
+    if (rect.bottom > viewport.bottom - 8 || overlapsEditor) panel.classList.add("is-flipped");
+    rect = panel.getBoundingClientRect();
+    if (rect.top < viewport.top + 8) panel.classList.remove("is-flipped");
+  }
+}
+
+function applyRichTextColor(kind, color) {
+  const isHighlight = kind === "highlight";
+  const normalized = safeCssColor(color, "");
+  if (!normalized) return false;
+  if (isHighlight) currentHighlightColor = normalized;
+  else currentTextColor = normalized;
+  rememberTextColor(kind, normalized);
+  const value = isHighlight && normalized.toLowerCase() === "#ffffff" ? false : normalized;
+  return runRichTextAction(() => inlineEditor.applyMark({ [isHighlight ? "backgroundColor" : "color"]: value }));
+}
+
+function adjustRichTextFontSize(delta) {
+  const input = $("#quick-title-size");
+  const node = semanticNode(inlineEditor?.getState()?.id);
+  const fallback = Number(activeRichTextField === "subtitle" ? node?.subtitleSize || 13 : node?.titleSize || 20);
+  const current = Number(activeRichTextMixed.fontSize ? fallback : activeRichTextMarks.fontSize || input.value || fallback);
+  const next = clamp(Math.round(current + delta), 8, 96);
+  input.value = String(next);
+  return runRichTextAction(() => inlineEditor.applyMark({ fontSize: next }));
+}
+
+function openLinkPopover() {
+  if (!inlineEditor?.isActive()) return;
+  const popover = $("#link-popover");
+  const button = $("#quick-link");
+  const opening = popover.hidden;
+  closeTextToolbarPopovers(opening ? popover : null);
+  popover.hidden = !opening;
+  button.setAttribute("aria-expanded", String(opening));
+  if (!opening) return;
+  const input = $("#link-url");
+  input.value = activeRichTextMixed.link ? "" : (activeRichTextMarks.link || "https://");
+  requestAnimationFrame(() => {
+    positionTextToolbarPopovers();
+    input.focus();
+    input.select();
+  });
 }
 
 function cycleNodeImagePlacement() {
@@ -2536,6 +2717,20 @@ function bindDomEvents() {
   selectionToolbar.addEventListener("click", (event) => {
     if (event.target.closest("#quick-edit")) { const id=selectedSemanticNodeIds().at(-1); if(id) beginNodeEdit(id); return; }
     if (event.target.closest("#quick-add-child")) { addChildOrSibling(true); return; }
+    const colorButton = event.target.closest("[data-color]");
+    if (colorButton) {
+      const kind = colorButton.closest("#highlight-color-palette") ? "highlight" : "text";
+      applyRichTextColor(kind, colorButton.dataset.color);
+      closeTextToolbarPopovers();
+      return;
+    }
+    const richAction = event.target.closest("[data-rich-action]")?.dataset.richAction;
+    if (richAction === "font-grow") { adjustRichTextFontSize(1); return; }
+    if (richAction === "font-shrink") { adjustRichTextFontSize(-1); return; }
+    if (richAction === "text-color-apply") { applyRichTextColor("text", currentTextColor); return; }
+    if (richAction === "highlight-apply") { applyRichTextColor("highlight", currentHighlightColor); return; }
+    if (richAction === "clear-format") { runRichTextAction(() => inlineEditor.clearFormatting()); return; }
+    if (richAction === "link") { openLinkPopover(); return; }
     const markButton = event.target.closest("[data-rich-mark]");
     if (markButton) { toggleRichTextMark(markButton.dataset.richMark); return; }
     if (event.target.closest("[data-rich-align]")) { cycleParagraphAlignment(); return; }
@@ -2543,11 +2738,6 @@ function bindDomEvents() {
     if (blockButton) {
       const nextType = blockButton.classList.toggle("is-active") ? blockButton.dataset.richBlock : "paragraph";
       runRichTextAction(() => inlineEditor.setBlockType(nextType), { field: "subtitle" });
-      return;
-    }
-    if (event.target.closest('[data-rich-action="link"]')) {
-      const link = window.prompt("输入链接（https、http 或 mailto）", activeRichTextMarks.link || "https://");
-      if (link !== null) toggleRichTextMark("link", link.trim() || false);
       return;
     }
     const nodeAction = event.target.closest("[data-node-action]")?.dataset.nodeAction;
@@ -2565,16 +2755,61 @@ function bindDomEvents() {
     else if (action === "delete") deleteSelection();
   });
   selectionToolbar.addEventListener("change", (event) => {
-    if (event.target.id === "quick-font-family") runRichTextAction(() => inlineEditor.applyMark({ fontFamily: event.target.value }));
+    if (event.target.id === "quick-font-family") {
+      const fontFamily = SAFE_FONT_OPTIONS.get(event.target.value.trim());
+      if (!fontFamily) {
+        showToast("请选择字体列表中的安全字体");
+        updateRichTextToolbar();
+        return;
+      }
+      runRichTextAction(() => inlineEditor.applyMark({ fontFamily }));
+    }
     if (event.target.id === "quick-title-size" && event.target.value) {
-      if (!runRichTextAction(() => inlineEditor.applyMark({ fontSize: Number(event.target.value) }))) applySelectedNodeStyle({ fontSize: Number(event.target.value) }, "修改标题字号");
+      const fontSize = clamp(Math.round(Number(event.target.value)), 8, 96);
+      event.target.value = String(fontSize);
+      runRichTextAction(() => inlineEditor.applyMark({ fontSize }));
     }
-    if (event.target.id === "quick-text-color") {
-      if (!runRichTextAction(() => inlineEditor.applyMark({ color: event.target.value }))) applySelectedNodeStyle({ textColor: event.target.value }, "修改文字颜色");
+    if (event.target.matches("#text-color-palette .custom-color input")) {
+      currentTextColor = event.target.value;
+      applyRichTextColor("text", event.target.value);
     }
-    if (event.target.id === "quick-highlight-color") runRichTextAction(() => inlineEditor.applyMark({ backgroundColor: event.target.value }));
-    if (event.target.id === "quick-fill-color") applySelectedNodeStyle({ fill: event.target.value }, "修改填充颜色");
-    if (event.target.id === "quick-border-color") applySelectedNodeStyle({ borderColor: event.target.value }, "修改边框颜色");
+    if (event.target.matches("#highlight-color-palette .custom-color input")) {
+      currentHighlightColor = event.target.value;
+      applyRichTextColor("highlight", event.target.value);
+    }
+  });
+  for (const menu of [$('details#quick-text-color-menu'), $('details#quick-highlight-menu')].filter(Boolean)) {
+    menu.addEventListener("toggle", () => {
+      if (!menu.open) return;
+      closeTextToolbarPopovers(menu);
+      requestAnimationFrame(positionTextToolbarPopovers);
+    });
+  }
+  $("#link-popover").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const input = $("#link-url");
+    const href = input.value.trim();
+    if (!isSafeLink(href)) {
+      $("#link-error").hidden = false;
+      input.focus();
+      return;
+    }
+    toggleRichTextMark("link", href);
+    closeTextToolbarPopovers();
+  });
+  $("#link-popover").addEventListener("click", (event) => {
+    if (!event.target.closest('[data-link-action="remove"]')) return;
+    toggleRichTextMark("link", false);
+    closeTextToolbarPopovers();
+  });
+  $("#link-url").addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    closeTextToolbarPopovers();
+    inlineEditor?.restoreSelection();
+  });
+  document.addEventListener("pointerdown", (event) => {
+    if (!event.target.closest("#selection-toolbar")) closeTextToolbarPopovers();
   });
 
   commandSearch.addEventListener("input", () => renderCommandPalette(commandSearch.value));
@@ -2599,6 +2834,7 @@ function bindDomEvents() {
   });
   document.addEventListener("pointerdown", (event) => { if (!event.target.closest?.("#context-menu")) contextMenu.hidden = true; });
   document.addEventListener("paste", (event) => {
+    if (event.target.matches?.("input,textarea,select,[contenteditable=true]") || event.target.closest?.(".inline-editor")) return;
     lastPasteEventAt = performance.now();
     const internalPayload = event.clipboardData?.getData(NODE_CLIPBOARD_TYPE);
     if (internalPayload) {
@@ -2617,7 +2853,8 @@ function bindDomEvents() {
     const imageItem = [...(event.clipboardData?.items || [])].find((item) => item.kind === "file" && item.type.startsWith("image/"));
     if (imageItem) {
       event.preventDefault();
-      const file = imageItem.getAsFile();
+      const file = imageItem.getAsFile()
+        || [...(event.clipboardData?.files || [])].find((item) => item.type.startsWith("image/"));
       if (file) importImage(file, { source: "clipboard", name: file.name || "clipboard-image" }).catch(showError);
       return;
     }
@@ -2791,6 +3028,8 @@ function bindKeyboard() {
 
 async function init() {
   refreshIcons();
+  renderRecentTextColors("text");
+  renderRecentTextColors("highlight");
   if (window.innerWidth <= 900) appShell.classList.add("is-left-collapsed", "is-right-collapsed");
   else appShell.classList.add("is-right-collapsed");
   initGraph();

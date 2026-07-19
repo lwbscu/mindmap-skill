@@ -13,7 +13,18 @@ import { copySubgraph, pasteSubgraph } from "../app/editor/clipboard.mjs";
 import { command, createCommandHistory } from "../app/editor/command-history.mjs";
 import { createInteractionStateMachine, InteractionState } from "../app/editor/interaction-state.mjs";
 import { computeInlineEditorPlacement, createInlineEditDraft, inlineEditDraftChanged, normalizeInlineEditDraft } from "../app/editor/inline-editing.mjs";
-import { applyMarkToSelection, createRichTextFromPlainText, isSafeLink, richTextToPlainText } from "../app/editor/rich-text.mjs";
+import {
+  applyMarkToSelection,
+  createRichTextFromPlainText,
+  insertTextAtSelection,
+  isSafeLink,
+  marksAtSelection,
+  normalizeMarks,
+  normalizeRichText,
+  richTextToPlainText,
+  richTextToSafeHtml,
+  safeHtmlToRichText,
+} from "../app/editor/rich-text.mjs";
 import { addImageAssetToDiagram, assignImageToNode, validateImageAssets } from "../app/media/image-assets.mjs";
 import { pointInRect, rectFromNode, routeDiagramEdges, segmentIntersectsRect } from "../app/routing/smart-router.mjs";
 import { selectByMarquee } from "../app/editor/selection-geometry.mjs";
@@ -190,8 +201,49 @@ const markedText = applyMarkToSelection(createRichTextFromPlainText("MindMap", {
 assert.equal(markedText.blocks[0].runs[0].text, "Mind");
 assert.equal(markedText.blocks[0].runs[0].marks.color, "#7c3aed");
 assert.equal(markedText.blocks[0].runs[1].text, "Map");
+const wordLocalFormat = applyMarkToSelection(
+  createRichTextFromPlainText("RuntimeProvider", { singleBlock: true }),
+  { start: 0, end: 7 },
+  { fontSize: 26, color: "#2563eb", underline: true },
+);
+assert.deepEqual(wordLocalFormat.blocks[0].runs.map((run) => run.text), ["Runtime", "Provider"], "local formatting must split only the selected run");
+assert.equal(wordLocalFormat.blocks[0].runs[0].marks.fontSize, 26);
+assert.equal(wordLocalFormat.blocks[0].runs[0].marks.color, "#2563eb");
+assert.equal(wordLocalFormat.blocks[0].runs[0].marks.underline, true);
+assert.deepEqual(wordLocalFormat.blocks[0].runs[1].marks, {}, "unselected text must keep its original marks");
+const mixedFormat = applyMarkToSelection(wordLocalFormat, { start: 7, end: "RuntimeProvider".length }, { backgroundColor: "#fef3c7" });
+const mixedMarks = marksAtSelection(mixedFormat, { start: 0, end: "RuntimeProvider".length }, { mixedValue: "mixed" });
+assert.equal(mixedMarks.fontSize, "mixed", "selection summary must report mixed font size");
+assert.equal(mixedMarks.color, "mixed", "selection summary must report mixed text color");
+assert.equal(mixedMarks.backgroundColor, "mixed", "selection summary must report mixed highlight color");
+const collapsedFutureInput = insertTextAtSelection(mixedFormat, { start: 7, end: 7 }, " + AI", { fontSize: 30, color: "#dc2626", backgroundColor: "#fee2e2" });
+const insertedRun = collapsedFutureInput.blocks[0].runs.find((run) => run.text === " + AI");
+assert.equal(insertedRun?.marks.fontSize, 30, "collapsed formatting must apply to the next inserted text");
+assert.equal(insertedRun?.marks.color, "#dc2626");
+assert.equal(insertedRun?.marks.backgroundColor, "#fee2e2");
+assert.equal(richTextToPlainText(collapsedFutureInput, { singleBlock: true }), "Runtime + AIProvider");
+const tiptapAdapterFixture = normalizeRichText({
+  version: 1,
+  blocks: [{
+    type: "paragraph",
+    align: "center",
+    runs: [
+      { text: "局部", marks: { fontFamily: "Noto Sans CJK SC, Microsoft YaHei, sans-serif", fontSize: 22, color: "#111827" } },
+      { text: "格式", marks: { fontWeight: "700", italic: true, underline: true, strike: true, code: true, backgroundColor: "#e0f2fe", link: "https://example.com" } },
+    ],
+  }],
+}, "", { singleBlock: true });
+const adapterHtml = richTextToSafeHtml(tiptapAdapterFixture, { singleBlock: true });
+assert.ok(adapterHtml.includes("font-size:22px"));
+assert.ok(adapterHtml.includes("background-color:#e0f2fe"));
+assert.ok(adapterHtml.includes('href="https://example.com"'));
+assert.equal(richTextToPlainText(safeHtmlToRichText(adapterHtml, { singleBlock: true }), { singleBlock: true }), "局部格式");
 assert.equal(isSafeLink("javascript:alert(1)"), false);
+assert.equal(isSafeLink("/local"), false);
 assert.equal(isSafeLink("https://example.com"), true);
+assert.equal(isSafeLink("mailto:reviewer@example.com"), true);
+assert.deepEqual(normalizeMarks({ fontFamily: "BadFont; color:red" }), {});
+assert.equal(normalizeMarks({ fontFamily: "Georgia, serif" }).fontFamily, "Georgia, serif");
 const editorPlacement = computeInlineEditorPlacement({ left: 900, top: 700, width: 200, height: 80 }, { left: 0, top: 0, width: 1024, height: 768 }, { minWidth: 320, minHeight: 108 });
 assert.ok(editorPlacement.left + editorPlacement.width <= 1016);
 assert.ok(editorPlacement.top + editorPlacement.minHeight <= 760);
@@ -265,6 +317,7 @@ assert.equal(build.code, 0, `${build.stdout}\n${build.stderr}`);
 const appIndex = await fs.readFile(path.join(root, "app", "index.html"), "utf8");
 const appScript = await fs.readFile(path.join(root, "app", "app.js"), "utf8");
 const appStyles = await fs.readFile(path.join(root, "app", "styles.css"), "utf8");
+const tiptapAdapter = await fs.readFile(path.join(root, "app", "editor", "tiptap-adapter.mjs"), "utf8");
 const desktopMain = await fs.readFile(path.join(root, "desktop", "main.mjs"), "utf8");
 for (const id of ["app-shell", "graph-canvas", "marquee", "lasso-overlay", "minimap", "node-list", "layer-list", "inspector-content", "selection-toolbar", "zoom-percent", "add-node", "toggle-left", "toggle-right", "error-banner", "new-project-button", "projects-button", "project-dialog", "project-form", "project-name", "project-list", "unsaved-dialog"]) {
   assert.ok(appIndex.includes(`id="${id}"`), `app index missing ${id}`);
@@ -272,13 +325,47 @@ for (const id of ["app-shell", "graph-canvas", "marquee", "lasso-overlay", "mini
 for (const snippet of ["new Graph(", "new Selection(", "new Scroller(", "new MiniMap(", "selectByMarquee", "pasteSubgraph", "createInlineEditor", "applySelectedNodeStyle", "edge:connected", "autoLayout", "exportPdf", "exportMermaid", "data-view-mode", "createBlankDiagram", "createNewProject", "window.mindmapDesktop.projects.create", "mod && key === \"n\""]) {
   assert.ok(appScript.includes(snippet), `app script missing ${snippet}`);
 }
+const editorFiles = await fs.readdir(path.join(root, "app", "editor"));
+assert.ok(editorFiles.some((file) => /tiptap|prosemirror/i.test(file)), "Word-style editing must use a Tiptap/ProseMirror adapter module");
+for (const id of [
+  "quick-font-family",
+  "quick-title-size",
+  "quick-font-grow",
+  "quick-font-shrink",
+  "quick-text-color-apply",
+  "quick-text-color-menu",
+  "text-color-palette",
+  "quick-highlight-apply",
+  "quick-highlight-menu",
+  "highlight-color-palette",
+  "quick-link",
+  "link-popover",
+]) {
+  assert.ok(appIndex.includes(`id="${id}"`), `Word-style floating toolbar missing ${id}`);
+}
+for (const mark of ["fontWeight", "italic", "underline", "strike"]) {
+  assert.ok(appIndex.includes(`data-rich-mark="${mark}"`), `Word-style floating toolbar missing ${mark} mark control`);
+}
+for (const action of ["clear-format", "link"]) {
+  assert.ok(appIndex.includes(`data-rich-action="${action}"`), `Word-style floating toolbar missing ${action} action`);
+}
+assert.ok(appIndex.includes('data-rich-mark="code"'), "Word-style floating toolbar missing inline code mark control");
+assert.ok(appIndex.includes('data-rich-block="bullet-list-item"'), "Word-style floating toolbar missing list control");
+assert.ok(appIndex.includes('data-rich-align="left"'), "Word-style floating toolbar missing alignment control");
+for (const removedId of ["quick-fill-color", "quick-border-color"]) {
+  assert.ok(!appIndex.includes(`id="${removedId}"`), `text toolbar must not expose node-level control ${removedId}`);
+}
+assert.ok(!appIndex.includes("text-style-menu"), "A mega menu must be replaced with direct Word-style controls");
+assert.ok(!appScript.includes("window.prompt"), "link editing must use a safe popover, not window.prompt");
+assert.ok(tiptapAdapter.includes("isComposing") && tiptapAdapter.includes("compositionstart"), "IME composition must be explicitly guarded");
+assert.ok(tiptapAdapter.includes("application/x-mindmap-rich-text"), "local text clipboard must preserve supported rich text");
 for (const selector of [".app-shell", ".topbar", ".sidebar", ".inspector", ".canvas-controls", ".selection-toolbar", ".minimap-shell", ".x6-widget-selection-box"]) {
   assert.ok(appStyles.includes(selector), `app styles missing ${selector}`);
 }
 assert.ok(appStyles.includes("body:has(.project-library-dialog[open]) #app-shell"), "project dialog must quiet the canvas background");
 assert.ok(appScript.indexOf('mod && key === "s"') < appScript.indexOf("if (typing) return"), "Ctrl/Cmd+S must work while editing text");
 assert.ok(appScript.indexOf('mod && key === "n"') < appScript.indexOf("if (typing) return"), "Ctrl/Cmd+N must work while editing text");
-for (const key of ["c", "v", "z"]) {
+for (const key of ["c", "x", "v", "z", "y"]) {
   assert.ok(appScript.indexOf(`mod && key === "${key}"`) > appScript.indexOf("if (typing) return"), `Ctrl/Cmd+${key.toUpperCase()} must remain text-local while editing`);
 }
 assert.ok(svg.includes('class="node-card"'));

@@ -134,39 +134,11 @@
         <svg id="lasso-overlay" class="lasso-overlay" aria-hidden="true"></svg>
 
         <div id="selection-toolbar" class="selection-toolbar" hidden role="toolbar" aria-label="文字与节点格式">
+          <div class="toolbar-mode toolbar-mode-node">
           <div class="toolbar-leading" data-structural-controls>
             <span id="selection-count">0 个已选</span>
             <button id="quick-edit" type="button" title="编辑文字 (F2)" aria-label="编辑文字"><i data-lucide="pencil"></i></button>
             <button id="quick-add-child" type="button" title="新建子主题 (Tab)" aria-label="新建子主题"><i data-lucide="plus"></i></button>
-          </div>
-          <div class="toolbar-group rich-toolbar-group">
-            <button type="button" class="toolbar-menu-button" data-rich-block="bullet-list-item" title="项目符号" aria-label="项目符号"><i data-lucide="list"></i><i class="toolbar-chevron" data-lucide="chevron-down"></i></button>
-          </div>
-          <span class="toolbar-divider" aria-hidden="true"></span>
-          <div class="toolbar-group rich-toolbar-group">
-            <button type="button" class="toolbar-menu-button" data-rich-align="left" title="段落对齐" aria-label="段落对齐"><i data-lucide="align-left"></i><i class="toolbar-chevron" data-lucide="chevron-down"></i></button>
-          </div>
-          <span class="toolbar-divider" aria-hidden="true"></span>
-          <div class="toolbar-group rich-toolbar-group">
-            <button id="quick-bold" type="button" data-rich-mark="fontWeight" data-rich-value="700" title="粗体" aria-label="粗体"><b>B</b></button>
-            <button type="button" data-rich-mark="strike" title="删除线" aria-label="删除线"><span class="format-glyph format-strike">S</span></button>
-            <button type="button" data-rich-mark="italic" title="斜体" aria-label="斜体"><span class="format-glyph format-italic">I</span></button>
-            <button type="button" data-rich-mark="underline" title="下划线" aria-label="下划线"><span class="format-glyph format-underline">U</span></button>
-            <button type="button" data-rich-action="link" title="添加链接" aria-label="添加链接"><i data-lucide="link-2"></i></button>
-            <button type="button" data-rich-mark="code" title="行内代码" aria-label="行内代码"><i data-lucide="code-2"></i></button>
-            <details class="text-style-menu compact-menu">
-              <summary class="toolbar-menu-button text-style-trigger" title="文字样式" aria-label="文字样式"><span class="text-style-a">A</span><i class="toolbar-chevron" data-lucide="chevron-down"></i></summary>
-              <div class="menu-panel text-style-panel">
-                <label>字体<select id="quick-font-family"><option value="Inter, ui-sans-serif, system-ui, sans-serif">Inter / 系统</option><option value="Noto Sans CJK SC, Microsoft YaHei, sans-serif">中文黑体</option><option value="Georgia, serif">Georgia</option><option value="ui-monospace, SFMono-Regular, Consolas, monospace">等宽字体</option></select></label>
-                <label>字号<select id="quick-title-size"><option value="12">12</option><option value="14">14</option><option value="16">16</option><option value="18">18</option><option value="20">20</option><option value="24">24</option><option value="28">28</option><option value="32">32</option><option value="36">36</option></select></label>
-                <div class="text-style-colors">
-                  <label>文字<input id="quick-text-color" type="color" value="#172033" aria-label="文字颜色"></label>
-                  <label>高亮<input id="quick-highlight-color" type="color" value="#ede9fe" aria-label="文字背景颜色"></label>
-                  <label>填充<input id="quick-fill-color" type="color" value="#ffffff" aria-label="节点填充颜色"></label>
-                  <label>边框<input id="quick-border-color" type="color" value="#2563eb" aria-label="节点边框颜色"></label>
-                </div>
-              </div>
-            </details>
           </div>
           <span class="toolbar-divider" aria-hidden="true"></span>
           <div class="toolbar-group context-toolbar-group">
@@ -174,14 +146,133 @@
             <button id="quick-image" type="button" data-node-action="image" title="插入或替换图片" aria-label="插入或替换图片"><i data-lucide="image-plus"></i></button>
             <button type="button" data-node-action="note" title="编辑说明" aria-label="编辑说明"><i data-lucide="message-square"></i></button>
           </div>
+          <span class="toolbar-divider" aria-hidden="true"></span>
           <div class="toolbar-group batch-toolbar-group" data-structural-controls>
-            <span class="toolbar-divider" aria-hidden="true"></span>
             <button type="button" data-batch-action="align-left" title="左对齐"><i data-lucide="align-left"></i></button>
             <button type="button" data-batch-action="align-top" title="顶对齐"><i data-lucide="align-start-horizontal"></i></button>
             <button type="button" data-batch-action="distribute" title="水平分布"><i data-lucide="align-horizontal-distribute-center"></i></button>
             <button type="button" data-batch-action="group" title="分组 (G)"><i data-lucide="group"></i></button>
             <button type="button" data-batch-action="hide" title="从当前视图隐藏"><i data-lucide="eye-off"></i></button>
             <button type="button" data-batch-action="delete" title="删除"><i data-lucide="trash-2"></i></button>
+          </div>
+          </div>
+
+          <div class="toolbar-mode toolbar-mode-text">
+          <div class="toolbar-group font-toolbar-group">
+            <label class="mini-control mini-control-font" title="字体">
+              <span>字体</span>
+              <input id="quick-font-family" list="font-family-options" value="Inter / 系统" autocomplete="off" aria-label="字体">
+              <datalist id="font-family-options">
+                <option value="Inter / 系统"></option>
+                <option value="中文黑体"></option>
+                <option value="思源黑体"></option>
+                <option value="Georgia"></option>
+                <option value="等宽字体"></option>
+              </datalist>
+            </label>
+            <label class="mini-control mini-control-size" title="字号">
+              <span>字号</span>
+              <input id="quick-title-size" list="font-size-options" type="number" min="8" max="96" step="1" value="18" aria-label="字号">
+              <datalist id="font-size-options">
+                <option value="8"></option><option value="9"></option><option value="10"></option><option value="11"></option><option value="12"></option><option value="14"></option><option value="16"></option><option value="18"></option><option value="20"></option><option value="22"></option><option value="24"></option><option value="28"></option><option value="32"></option><option value="36"></option><option value="48"></option><option value="64"></option><option value="72"></option><option value="96"></option>
+              </datalist>
+            </label>
+            <button id="quick-font-grow" type="button" data-rich-action="font-grow" title="增大字号" aria-label="增大字号"><i data-lucide="plus"></i></button>
+            <button id="quick-font-shrink" type="button" data-rich-action="font-shrink" title="减小字号" aria-label="减小字号"><i data-lucide="minus"></i></button>
+          </div>
+          <span class="toolbar-divider" aria-hidden="true"></span>
+          <div class="toolbar-group rich-toolbar-group">
+            <button id="quick-bold" type="button" data-rich-mark="fontWeight" data-rich-value="700" title="粗体" aria-label="粗体"><b>B</b></button>
+            <button type="button" data-rich-mark="italic" title="斜体" aria-label="斜体"><span class="format-glyph format-italic">I</span></button>
+            <button type="button" data-rich-mark="underline" title="下划线" aria-label="下划线"><span class="format-glyph format-underline">U</span></button>
+            <button type="button" data-rich-mark="strike" title="删除线" aria-label="删除线"><span class="format-glyph format-strike">S</span></button>
+          </div>
+          <div class="toolbar-group color-toolbar-group">
+            <div class="split-color-control">
+              <button id="quick-text-color-apply" type="button" data-rich-action="text-color-apply" title="应用文字颜色" aria-label="应用文字颜色"><span class="color-a color-a-text">A</span></button>
+              <details id="quick-text-color-menu" class="palette-menu compact-menu">
+                <summary title="文字颜色" aria-label="文字颜色"><i class="toolbar-chevron" data-lucide="chevron-down"></i></summary>
+                <div id="text-color-palette" class="menu-panel color-palette" role="group" aria-label="文字颜色面板">
+                  <strong>主题色</strong>
+                  <div class="palette-row">
+                    <button type="button" data-color="#172033" style="--swatch:#172033" aria-label="深黑"></button>
+                    <button type="button" data-color="#2563eb" style="--swatch:#2563eb" aria-label="蓝色"></button>
+                    <button type="button" data-color="#7c3aed" style="--swatch:#7c3aed" aria-label="紫色"></button>
+                    <button type="button" data-color="#059669" style="--swatch:#059669" aria-label="绿色"></button>
+                    <button type="button" data-color="#dc2626" style="--swatch:#dc2626" aria-label="红色"></button>
+                  </div>
+                  <strong>标准色</strong>
+                  <div class="palette-row">
+                    <button type="button" data-color="#000000" style="--swatch:#000000" aria-label="黑色"></button>
+                    <button type="button" data-color="#6b7280" style="--swatch:#6b7280" aria-label="灰色"></button>
+                    <button type="button" data-color="#f59e0b" style="--swatch:#f59e0b" aria-label="橙色"></button>
+                    <button type="button" data-color="#0891b2" style="--swatch:#0891b2" aria-label="青色"></button>
+                    <button type="button" data-color="#be185d" style="--swatch:#be185d" aria-label="玫红"></button>
+                  </div>
+                  <strong>最近</strong>
+                  <div class="palette-row recent-colors" aria-label="最近使用颜色">
+                    <button type="button" data-color="#172033" style="--swatch:#172033" aria-label="最近颜色 1"></button>
+                    <button type="button" data-color="#2563eb" style="--swatch:#2563eb" aria-label="最近颜色 2"></button>
+                    <button type="button" data-color="#7c3aed" style="--swatch:#7c3aed" aria-label="最近颜色 3"></button>
+                  </div>
+                  <label class="custom-color">自定义<input type="color" value="#172033" aria-label="自定义文字颜色"></label>
+                </div>
+              </details>
+            </div>
+            <div class="split-color-control">
+              <button id="quick-highlight-apply" type="button" data-rich-action="highlight-apply" title="应用高亮" aria-label="应用高亮"><span class="color-a color-a-highlight">A</span></button>
+              <details id="quick-highlight-menu" class="palette-menu compact-menu">
+                <summary title="高亮颜色" aria-label="高亮颜色"><i class="toolbar-chevron" data-lucide="chevron-down"></i></summary>
+                <div id="highlight-color-palette" class="menu-panel color-palette" role="group" aria-label="高亮颜色面板">
+                  <strong>主题色</strong>
+                  <div class="palette-row">
+                    <button type="button" data-color="#ede9fe" style="--swatch:#ede9fe" aria-label="淡紫"></button>
+                    <button type="button" data-color="#dbeafe" style="--swatch:#dbeafe" aria-label="淡蓝"></button>
+                    <button type="button" data-color="#dcfce7" style="--swatch:#dcfce7" aria-label="淡绿"></button>
+                    <button type="button" data-color="#fef3c7" style="--swatch:#fef3c7" aria-label="淡黄"></button>
+                    <button type="button" data-color="#ffe4e6" style="--swatch:#ffe4e6" aria-label="淡红"></button>
+                  </div>
+                  <strong>标准色</strong>
+                  <div class="palette-row">
+                    <button type="button" data-color="#ffffff" style="--swatch:#ffffff" aria-label="无高亮"></button>
+                    <button type="button" data-color="#f3f4f6" style="--swatch:#f3f4f6" aria-label="淡灰"></button>
+                    <button type="button" data-color="#fed7aa" style="--swatch:#fed7aa" aria-label="淡橙"></button>
+                    <button type="button" data-color="#ccfbf1" style="--swatch:#ccfbf1" aria-label="淡青"></button>
+                    <button type="button" data-color="#fce7f3" style="--swatch:#fce7f3" aria-label="淡粉"></button>
+                  </div>
+                  <strong>最近</strong>
+                  <div class="palette-row recent-colors" aria-label="最近使用高亮">
+                    <button type="button" data-color="#ede9fe" style="--swatch:#ede9fe" aria-label="最近高亮 1"></button>
+                    <button type="button" data-color="#dbeafe" style="--swatch:#dbeafe" aria-label="最近高亮 2"></button>
+                    <button type="button" data-color="#fef3c7" style="--swatch:#fef3c7" aria-label="最近高亮 3"></button>
+                  </div>
+                  <label class="custom-color">自定义<input type="color" value="#ede9fe" aria-label="自定义高亮颜色"></label>
+                </div>
+              </details>
+            </div>
+          </div>
+          <span class="toolbar-divider" aria-hidden="true"></span>
+          <div class="toolbar-group rich-toolbar-group">
+            <button type="button" data-rich-action="clear-format" title="清除格式" aria-label="清除格式"><i data-lucide="eraser"></i></button>
+            <div class="toolbar-popover-control">
+              <button id="quick-link" type="button" data-rich-action="link" title="添加链接" aria-label="添加链接" aria-expanded="false"><i data-lucide="link-2"></i></button>
+              <form id="link-popover" class="link-popover" hidden>
+                <label for="link-url">链接地址</label>
+                <div>
+                  <input id="link-url" type="url" inputmode="url" placeholder="https://example.com" autocomplete="off">
+                  <button type="submit" class="link-apply" title="应用链接" aria-label="应用链接"><i data-lucide="check"></i></button>
+                  <button type="button" class="link-remove" data-link-action="remove" title="移除链接" aria-label="移除链接"><i data-lucide="unlink"></i></button>
+                </div>
+                <span id="link-error" role="alert" hidden>仅支持 http、https 和 mailto 链接</span>
+              </form>
+            </div>
+            <button type="button" data-rich-mark="code" title="行内代码" aria-label="行内代码"><i data-lucide="code-2"></i></button>
+          </div>
+          <span class="toolbar-divider" aria-hidden="true"></span>
+          <div class="toolbar-group paragraph-toolbar-group">
+            <button type="button" class="toolbar-menu-button" data-rich-block="bullet-list-item" title="列表" aria-label="列表"><i data-lucide="list"></i><i class="toolbar-chevron" data-lucide="chevron-down"></i></button>
+            <button type="button" class="toolbar-menu-button" data-rich-align="left" title="对齐" aria-label="对齐"><i data-lucide="align-left"></i><i class="toolbar-chevron" data-lucide="chevron-down"></i></button>
+          </div>
           </div>
         </div>
 

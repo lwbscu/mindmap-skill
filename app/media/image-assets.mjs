@@ -491,7 +491,7 @@ export async function normalizeImageBlob(inputBlob, options = {}) {
   const targetSize = fitWithinMaxSide(parsedSize.width, parsedSize.height, limits.maxSide);
   const needsCanvas =
     hasBrowserImageApis() &&
-    (targetSize.scale < 1 || inputMime === "image/webp" || inputMime === "image/png");
+    (targetSize.scale < 1 || inputMime === "image/webp" || inputBytes.byteLength > limits.maxAssetBytes);
 
   if (!needsCanvas) {
     if (targetSize.scale < 1) {

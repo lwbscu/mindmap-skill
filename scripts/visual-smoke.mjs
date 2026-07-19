@@ -59,6 +59,12 @@ for (const [width, height] of sizes) {
   assert.equal(result.toolbar?.visible, true, `${width}x${height} rich-text toolbar is not visible`);
   assert.equal(result.toolbar?.withinViewport, true, `${width}x${height} rich-text toolbar escaped the viewport`);
   assert.equal(result.toolbar?.overlapsEditor, false, `${width}x${height} rich-text toolbar overlaps the editor`);
+  assert.equal(result.toolbar?.fontMenuWithinViewport, true, `${width}x${height} font menu escaped the viewport`);
+  assert.equal(result.toolbar?.sizeMenuWithinViewport, true, `${width}x${height} size menu escaped the viewport`);
+  assert.equal(result.toolbar?.textColorPaletteWithinViewport, true, `${width}x${height} text color palette escaped the viewport`);
+  assert.equal(result.toolbar?.highlightPaletteWithinViewport, true, `${width}x${height} highlight palette escaped the viewport`);
+  assert.equal(result.toolbar?.paletteOverlapsEditor, false, `${width}x${height} rich-text palette overlaps the editor`);
+  assert.equal(result.toolbar?.singleLineScrollable, true, `${width}x${height} rich-text toolbar must stay single-line and horizontally scrollable when narrow`);
   await fs.access(result.screenshotPath);
   await fs.access(result.toolbarScreenshotPath);
   results.push({ requested: `${width}x${height}`, ...result });

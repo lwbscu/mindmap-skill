@@ -1,6 +1,16 @@
 export const RICH_TEXT_VERSION = 1;
 export const RICH_TEXT_BLOCK_TYPES = Object.freeze(["paragraph", "bullet-list-item", "ordered-list-item"]);
 export const RICH_TEXT_ALIGNS = Object.freeze(["left", "center", "right"]);
+export const SAFE_RICH_TEXT_FONT_FAMILIES = Object.freeze([
+  "Inter, ui-sans-serif, system-ui, sans-serif",
+  "Noto Sans CJK SC, Microsoft YaHei, PingFang SC, sans-serif",
+  "Source Han Sans SC, Noto Sans CJK SC, sans-serif",
+  "Georgia, serif",
+  "ui-monospace, SFMono-Regular, Consolas, monospace",
+  // Preserve font stacks emitted by earlier MindMap versions.
+  "Inter, Noto Sans CJK SC, Microsoft YaHei, sans-serif",
+  "Noto Sans CJK SC, Microsoft YaHei, sans-serif",
+]);
 export const RICH_TEXT_MARKS = Object.freeze([
   "fontFamily",
   "fontSize",
@@ -19,6 +29,7 @@ const DEFAULT_ALIGN = "left";
 const MAX_FONT_SIZE = 96;
 const MIN_FONT_SIZE = 8;
 const URL_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
+const SAFE_FONT_FAMILIES = new Set(SAFE_RICH_TEXT_FONT_FAMILIES);
 
 function textOf(value, fallback = "") {
   return typeof value === "string" ? value : value == null ? fallback : String(value);
@@ -64,8 +75,8 @@ export function isSafeLink(value) {
   const href = textOf(value).trim();
   if (!href) return false;
   try {
-    const url = new URL(href, "https://mindmap.local");
-    return URL_PROTOCOLS.has(url.protocol) && !href.toLowerCase().startsWith("javascript:");
+    const url = new URL(href);
+    return URL_PROTOCOLS.has(url.protocol);
   } catch {
     return false;
   }
@@ -82,7 +93,8 @@ function normalizeColor(value) {
 
 export function normalizeMarks(marks = {}) {
   const next = {};
-  if (typeof marks.fontFamily === "string" && marks.fontFamily.trim()) next.fontFamily = marks.fontFamily.trim();
+  const fontFamily = typeof marks.fontFamily === "string" ? marks.fontFamily.trim() : "";
+  if (SAFE_FONT_FAMILIES.has(fontFamily)) next.fontFamily = fontFamily;
   if (marks.fontSize !== undefined) next.fontSize = clamp(Math.round(finiteNumber(marks.fontSize, 0)), MIN_FONT_SIZE, MAX_FONT_SIZE);
   if (marks.fontWeight !== undefined) {
     next.fontWeight = String(marks.fontWeight) === "700" || String(marks.fontWeight).toLowerCase() === "bold" ? "700" : "400";
@@ -239,16 +251,56 @@ function patchMarks(baseMarks, patch = {}) {
   return next;
 }
 
-export function marksAtSelection(richText, selection = {}) {
+export function marksAtSelection(richText, selection = {}, options = {}) {
+  const summary = selectionMarksSummary(richText, selection);
+  if (options.mixedValue === undefined) return summary.marks;
+  const marks = { ...summary.marks };
+  for (const key of Object.keys(summary.mixed)) marks[key] = options.mixedValue;
+  return marks;
+}
+
+export function selectionMarksSummary(richText, selection = {}) {
   const normalized = normalizeRichText(richText);
   const range = normalizeRichTextSelection(normalized, selection);
   const parts = mapRunsWithOffsets(normalized);
-  const active = parts.find((part) => (
-    range.collapsed
-      ? range.start >= part.start && range.start <= part.end
-      : part.end > range.start && part.start < range.end
-  ));
-  return normalizeMarks(active?.run?.marks);
+  if (range.collapsed) {
+    const active = parts.find((part) => range.start > part.start && range.start <= part.end)
+      || parts.find((part) => range.start >= part.start && range.start <= part.end)
+      || parts.at(-1);
+    return {
+      collapsed: true,
+      marks: normalizeMarks(active?.run?.marks),
+      mixed: {},
+    };
+  }
+
+  const selected = parts
+    .map((part) => {
+      const start = clamp(range.start - part.start, 0, part.run.text.length);
+      const end = clamp(range.end - part.start, 0, part.run.text.length);
+      return end > start ? { marks: normalizeMarks(part.run.marks), length: end - start } : null;
+    })
+    .filter(Boolean);
+  if (!selected.length) return { collapsed: false, marks: {}, mixed: {} };
+
+  const marks = {};
+  const mixed = {};
+  for (const key of RICH_TEXT_MARKS) {
+    const values = new Map();
+    for (const item of selected) {
+      const value = item.marks[key] ?? "";
+      values.set(String(value), value);
+    }
+    if (values.size === 1) {
+      const value = values.values().next().value;
+      if (value !== "") marks[key] = value;
+    } else {
+      mixed[key] = true;
+      const firstMeaningful = Array.from(values.values()).find((value) => value !== "");
+      if (firstMeaningful !== undefined) marks[key] = firstMeaningful;
+    }
+  }
+  return { collapsed: false, marks: normalizeMarks(marks), mixed };
 }
 
 export function applyMarkToSelection(richText, selection, markPatch = {}) {
@@ -270,6 +322,11 @@ export function applyMarkToSelection(richText, selection, markPatch = {}) {
     version: RICH_TEXT_VERSION,
     blocks: blocks.map((block) => ({ ...block, runs: mergeRuns(block.runs) })),
   };
+}
+
+export function clearFormattingAtSelection(richText, selection = {}) {
+  const patch = Object.fromEntries(RICH_TEXT_MARKS.map((key) => [key, false]));
+  return applyMarkToSelection(richText, selection, patch);
 }
 
 export function insertTextAtSelection(richText, selection, text, marks = {}) {
