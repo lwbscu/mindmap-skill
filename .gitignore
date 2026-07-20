@@ -2,6 +2,10 @@
 Thumbs.db
 node_modules/
 coverage/
+dist/
+cache/
+.cache/
+.obsidian/
 *.log
 *.tmp
 *.bak
@@ -10,3 +14,6 @@ coverage/
 !.env.example
 .idea/
 .vscode/
+projects/*.diagram.json
+projects/*.tmp
+!projects/.gitkeep

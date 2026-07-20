@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="color-scheme" content="light">
+  <title>MindMap</title>
+  <link rel="icon" href="./assets/mindmap.png" type="image/png">
+  <link rel="apple-touch-icon" href="./assets/mindmap.png">
+  <link rel="manifest" href="./manifest.webmanifest">
+</head>
+<body>
+  <div id="app-shell" class="app-shell" data-tool="select" data-view="architecture">
+    <header class="topbar">
+      <div class="topbar-cluster app-cluster">
+        <button id="toggle-left" class="icon-button" type="button" title="显示或隐藏导航侧栏" aria-label="显示或隐藏导航侧栏"><i data-lucide="panel-left"></i></button>
+        <img class="app-mark" src="./assets/mindmap.png" alt="" width="32" height="32">
+        <div class="brand-copy">
+          <strong>MindMap</strong>
+          <span id="save-status">本地编辑</span>
+        </div>
+      </div>
+
+      <nav class="view-switcher" aria-label="视图模式">
+        <button type="button" data-view-mode="mindmap">MindMap</button>
+        <button type="button" data-view-mode="dependency">依赖图</button>
+        <button class="is-active" type="button" data-view-mode="architecture">架构图</button>
+      </nav>
+
+      <div class="topbar-cluster tool-cluster" aria-label="画布工具">
+        <button class="icon-button is-active" type="button" data-tool="select" title="选择工具 (V)" aria-label="选择工具"><i data-lucide="mouse-pointer-2"></i></button>
+        <button class="icon-button" type="button" data-tool="pan" title="抓手工具 (H)" aria-label="抓手工具"><i data-lucide="hand"></i></button>
+        <button class="icon-button" type="button" data-tool="connect" title="连线工具 (C)" aria-label="连线工具"><i data-lucide="git-branch"></i></button>
+        <details class="new-menu compact-menu">
+          <summary class="icon-button" title="新建" aria-label="新建"><i data-lucide="plus"></i></summary>
+          <div class="menu-panel">
+            <button id="add-node" type="button"><i data-lucide="square"></i>模块方块 <kbd>B</kbd></button>
+            <button id="add-note" type="button"><i data-lucide="sticky-note"></i>便签 <kbd>N</kbd></button>
+            <button id="add-group" type="button"><i data-lucide="group"></i>分组框</button>
+            <button id="add-external" type="button"><i data-lucide="cloud"></i>外部系统</button>
+          </div>
+        </details>
+        <button id="auto-layout" class="icon-button" type="button" title="自动布局 (L)" aria-label="自动布局"><i data-lucide="wand-sparkles"></i></button>
+      </div>
+
+      <div class="topbar-spacer"></div>
+
+      <div class="topbar-cluster history-cluster" aria-label="编辑历史">
+        <button id="undo" class="icon-button" type="button" title="撤销 (Ctrl/Cmd+Z)" aria-label="撤销"><i data-lucide="undo-2"></i></button>
+        <button id="redo" class="icon-button" type="button" title="重做 (Ctrl/Cmd+Shift+Z)" aria-label="重做"><i data-lucide="redo-2"></i></button>
+      </div>
+
+      <label class="top-search">
+        <i data-lucide="search" aria-hidden="true"></i>
+        <input id="search" type="search" placeholder="搜索节点、关系、证据" aria-label="搜索节点、关系和证据">
+        <kbd>⌘F</kbd>
+      </label>
+
+      <details class="project-menu compact-menu">
+        <summary class="icon-button" title="项目" aria-label="打开项目菜单"><i data-lucide="folder-open"></i></summary>
+        <div class="menu-panel menu-panel-right project-menu-panel">
+          <button id="new-project-button" type="button"><i data-lucide="file-plus-2"></i>新建空白项目 <kbd>Ctrl N</kbd></button>
+          <button id="projects-button" type="button"><i data-lucide="folder-tree"></i>最近 / 本地项目</button>
+          <button id="open-file-button" type="button"><i data-lucide="file-input"></i>导入 Diagram JSON / HTML</button>
+          <hr>
+          <div class="menu-section-label">最近项目</div>
+          <div id="recent-project-menu" class="project-menu-list" aria-live="polite">
+            <div class="project-menu-empty"><i data-lucide="clock-3"></i><span>还没有最近打开的项目</span></div>
+          </div>
+          <div class="project-root-hint" title="项目保存在 App 根目录的 projects 文件夹"><i data-lucide="hard-drive"></i><span>projects/</span></div>
+        </div>
+      </details>
+      <input id="open-file" type="file" accept="application/json,.json,text/html,.html,.htm" hidden>
+      <input id="image-file" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+      <details class="export-menu compact-menu">
+        <summary class="icon-button" title="导出" aria-label="导出"><i data-lucide="download"></i></summary>
+        <div class="menu-panel menu-panel-right">
+          <button type="button" data-export="svg"><i data-lucide="file-image"></i>SVG</button>
+          <button type="button" data-export="png"><i data-lucide="image"></i>PNG</button>
+          <button type="button" data-export="pdf"><i data-lucide="file-text"></i>PDF</button>
+          <button type="button" data-export="json"><i data-lucide="braces"></i>Diagram JSON</button>
+          <button type="button" data-export="html"><i data-lucide="file-code-2"></i>独立 HTML（只读）</button>
+          <button type="button" data-export="editable-html"><i data-lucide="panels-top-left"></i>可编辑 HTML（完整 App）</button>
+          <button type="button" data-export="mermaid"><i data-lucide="workflow"></i>Mermaid</button>
+          <hr>
+          <button id="copy-summary" type="button"><i data-lucide="clipboard-copy"></i>复制摘要</button>
+        </div>
+      </details>
+      <button id="toggle-right" class="icon-button" type="button" title="显示或隐藏检查器" aria-label="显示或隐藏检查器"><i data-lucide="panel-right"></i></button>
+    </header>
+
+    <aside class="sidebar" aria-label="图表导航">
+      <div class="panel-tabs" role="tablist" aria-label="导航视图">
+        <button class="is-active" type="button" data-sidebar-tab="outline" role="tab">大纲</button>
+        <button type="button" data-sidebar-tab="layers" role="tab">图层</button>
+        <button type="button" data-sidebar-tab="views" role="tab">视图</button>
+      </div>
+      <section class="sidebar-panel" data-sidebar-panel="outline">
+        <div class="panel-heading"><span>结构索引</span><b id="sidebar-node-count">0</b></div>
+        <div id="node-list" class="node-list" role="tree"></div>
+      </section>
+      <section class="sidebar-panel" data-sidebar-panel="layers" hidden>
+        <div class="panel-heading"><span>图层可见性</span><button id="show-all-layers" type="button">全部显示</button></div>
+        <div id="layer-list" class="layer-list"></div>
+      </section>
+      <section class="sidebar-panel" data-sidebar-panel="views" hidden>
+        <div class="panel-heading"><span>已保存视图</span><button id="save-view" type="button">保存</button></div>
+        <div id="saved-view-list" class="saved-view-list"></div>
+      </section>
+      <div id="left-resizer" class="panel-resizer" role="separator" aria-label="调整导航侧栏宽度"></div>
+    </aside>
+
+    <main class="workspace">
+      <section id="graph-shell" class="graph-shell" aria-label="MindMap 无限画布">
+        <div id="error-banner" class="error-banner" role="alert" hidden>
+          <div><strong>无法载入图表</strong><span id="error-message"></span></div>
+          <button id="dismiss-error" class="icon-button" type="button" aria-label="关闭错误"><i data-lucide="x"></i></button>
+        </div>
+
+        <div class="canvas-titlebar">
+          <div>
+            <strong id="diagram-title">结构框图</strong>
+            <span id="diagram-subtitle">交互式结构框图</span>
+          </div>
+          <div class="canvas-metrics">
+            <span><b id="visible-node-count">0</b> / <b id="node-count">0</b> 节点</span>
+            <span><b id="edge-count">0</b> 关系</span>
+          </div>
+        </div>
+
+        <div id="search-results" class="search-results" hidden></div>
+        <div id="graph-canvas" class="graph-canvas" tabindex="0"></div>
+        <div id="marquee" class="marquee" hidden></div>
+        <svg id="lasso-overlay" class="lasso-overlay" aria-hidden="true"></svg>
+
+        <div id="selection-toolbar" class="selection-toolbar" hidden role="toolbar" aria-label="文字与节点格式">
+          <div class="toolbar-mode toolbar-mode-node">
+          <div class="toolbar-leading" data-structural-controls>
+            <span id="selection-count">0 个已选</span>
+            <button id="quick-edit" type="button" title="编辑文字 (F2)" aria-label="编辑文字"><i data-lucide="pencil"></i></button>
+            <button id="quick-add-child" type="button" title="新建子主题 (Tab)" aria-label="新建子主题"><i data-lucide="plus"></i></button>
+          </div>
+          <span class="toolbar-divider" aria-hidden="true"></span>
+          <div class="toolbar-group context-toolbar-group">
+            <button type="button" data-node-action="layout" title="图片与节点布局" aria-label="图片与节点布局"><i data-lucide="layout-grid"></i></button>
+            <button id="quick-image" type="button" data-node-action="image" title="插入或替换图片" aria-label="插入或替换图片"><i data-lucide="image-plus"></i></button>
+            <button type="button" data-node-action="note" title="编辑说明" aria-label="编辑说明"><i data-lucide="message-square"></i></button>
+          </div>
+          <span class="toolbar-divider" aria-hidden="true"></span>
+          <div class="toolbar-group batch-toolbar-group" data-structural-controls>
+            <button type="button" data-batch-action="align-left" title="左对齐"><i data-lucide="align-left"></i></button>
+            <button type="button" data-batch-action="align-top" title="顶对齐"><i data-lucide="align-start-horizontal"></i></button>
+            <button type="button" data-batch-action="distribute" title="水平分布"><i data-lucide="align-horizontal-distribute-center"></i></button>
+            <button type="button" data-batch-action="group" title="分组 (G)"><i data-lucide="group"></i></button>
+            <button type="button" data-batch-action="hide" title="从当前视图隐藏"><i data-lucide="eye-off"></i></button>
+            <button type="button" data-batch-action="delete" title="删除"><i data-lucide="trash-2"></i></button>
+          </div>
+          </div>
+
+          <div class="toolbar-mode toolbar-mode-text">
+          <div class="toolbar-group font-toolbar-group">
+            <label class="mini-control mini-control-font" title="字体">
+              <span>字体</span>
+              <input id="quick-font-family" list="font-family-options" value="Inter / 系统" autocomplete="off" aria-label="字体">
+              <datalist id="font-family-options">
+                <option value="Inter / 系统"></option>
+                <option value="中文黑体"></option>
+                <option value="思源黑体"></option>
+                <option value="Georgia"></option>
+                <option value="等宽字体"></option>
+              </datalist>
+            </label>
+            <label class="mini-control mini-control-size" title="字号">
+              <span>字号</span>
+              <input id="quick-title-size" list="font-size-options" type="number" min="8" max="96" step="1" value="18" aria-label="字号">
+              <datalist id="font-size-options">
+                <option value="8"></option><option value="9"></option><option value="10"></option><option value="11"></option><option value="12"></option><option value="14"></option><option value="16"></option><option value="18"></option><option value="20"></option><option value="22"></option><option value="24"></option><option value="28"></option><option value="32"></option><option value="36"></option><option value="48"></option><option value="64"></option><option value="72"></option><option value="96"></option>
+              </datalist>
+            </label>
+            <button id="quick-font-grow" type="button" data-rich-action="font-grow" title="增大字号" aria-label="增大字号"><i data-lucide="plus"></i></button>
+            <button id="quick-font-shrink" type="button" data-rich-action="font-shrink" title="减小字号" aria-label="减小字号"><i data-lucide="minus"></i></button>
+          </div>
+          <span class="toolbar-divider" aria-hidden="true"></span>
+          <div class="toolbar-group rich-toolbar-group">
+            <button id="quick-bold" type="button" data-rich-mark="fontWeight" data-rich-value="700" title="粗体" aria-label="粗体"><b>B</b></button>
+            <button type="button" data-rich-mark="italic" title="斜体" aria-label="斜体"><span class="format-glyph format-italic">I</span></button>
+            <button type="button" data-rich-mark="underline" title="下划线" aria-label="下划线"><span class="format-glyph format-underline">U</span></button>
+            <button type="button" data-rich-mark="strike" title="删除线" aria-label="删除线"><span class="format-glyph format-strike">S</span></button>
+          </div>
+          <div class="toolbar-group color-toolbar-group">
+            <div class="split-color-control">
+              <button id="quick-text-color-apply" type="button" data-rich-action="text-color-apply" title="应用文字颜色" aria-label="应用文字颜色"><span class="color-a color-a-text">A</span></button>
+              <details id="quick-text-color-menu" class="palette-menu compact-menu">
+                <summary title="文字颜色" aria-label="文字颜色"><i class="toolbar-chevron" data-lucide="chevron-down"></i></summary>
+                <div id="text-color-palette" class="menu-panel color-palette" role="group" aria-label="文字颜色面板">
+                  <strong>主题色</strong>
+                  <div class="palette-row">
+                    <button type="button" data-color="#172033" style="--swatch:#172033" aria-label="深黑"></button>
+                    <button type="button" data-color="#2563eb" style="--swatch:#2563eb" aria-label="蓝色"></button>
+                    <button type="button" data-color="#7c3aed" style="--swatch:#7c3aed" aria-label="紫色"></button>
+                    <button type="button" data-color="#059669" style="--swatch:#059669" aria-label="绿色"></button>
+                    <button type="button" data-color="#dc2626" style="--swatch:#dc2626" aria-label="红色"></button>
+                  </div>
+                  <strong>标准色</strong>
+                  <div class="palette-row">
+                    <button type="button" data-color="#000000" style="--swatch:#000000" aria-label="黑色"></button>
+                    <button type="button" data-color="#6b7280" style="--swatch:#6b7280" aria-label="灰色"></button>
+                    <button type="button" data-color="#f59e0b" style="--swatch:#f59e0b" aria-label="橙色"></button>
+                    <button type="button" data-color="#0891b2" style="--swatch:#0891b2" aria-label="青色"></button>
+                    <button type="button" data-color="#be185d" style="--swatch:#be185d" aria-label="玫红"></button>
+                  </div>
+                  <strong>最近</strong>
+                  <div class="palette-row recent-colors" aria-label="最近使用颜色">
+                    <button type="button" data-color="#172033" style="--swatch:#172033" aria-label="最近颜色 1"></button>
+                    <button type="button" data-color="#2563eb" style="--swatch:#2563eb" aria-label="最近颜色 2"></button>
+                    <button type="button" data-color="#7c3aed" style="--swatch:#7c3aed" aria-label="最近颜色 3"></button>
+                  </div>
+                  <label class="custom-color">自定义<input type="color" value="#172033" aria-label="自定义文字颜色"></label>
+                </div>
+              </details>
+            </div>
+            <div class="split-color-control">
+              <button id="quick-highlight-apply" type="button" data-rich-action="highlight-apply" title="应用高亮" aria-label="应用高亮"><span class="color-a color-a-highlight">A</span></button>
+              <details id="quick-highlight-menu" class="palette-menu compact-menu">
+                <summary title="高亮颜色" aria-label="高亮颜色"><i class="toolbar-chevron" data-lucide="chevron-down"></i></summary>
+                <div id="highlight-color-palette" class="menu-panel color-palette" role="group" aria-label="高亮颜色面板">
+                  <strong>主题色</strong>
+                  <div class="palette-row">
+                    <button type="button" data-color="#ede9fe" style="--swatch:#ede9fe" aria-label="淡紫"></button>
+                    <button type="button" data-color="#dbeafe" style="--swatch:#dbeafe" aria-label="淡蓝"></button>
+                    <button type="button" data-color="#dcfce7" style="--swatch:#dcfce7" aria-label="淡绿"></button>
+                    <button type="button" data-color="#fef3c7" style="--swatch:#fef3c7" aria-label="淡黄"></button>
+                    <button type="button" data-color="#ffe4e6" style="--swatch:#ffe4e6" aria-label="淡红"></button>
+                  </div>
+                  <strong>标准色</strong>
+                  <div class="palette-row">
+                    <button type="button" data-color="#ffffff" style="--swatch:#ffffff" aria-label="无高亮"></button>
+                    <button type="button" data-color="#f3f4f6" style="--swatch:#f3f4f6" aria-label="淡灰"></button>
+                    <button type="button" data-color="#fed7aa" style="--swatch:#fed7aa" aria-label="淡橙"></button>
+                    <button type="button" data-color="#ccfbf1" style="--swatch:#ccfbf1" aria-label="淡青"></button>
+                    <button type="button" data-color="#fce7f3" style="--swatch:#fce7f3" aria-label="淡粉"></button>
+                  </div>
+                  <strong>最近</strong>
+                  <div class="palette-row recent-colors" aria-label="最近使用高亮">
+                    <button type="button" data-color="#ede9fe" style="--swatch:#ede9fe" aria-label="最近高亮 1"></button>
+                    <button type="button" data-color="#dbeafe" style="--swatch:#dbeafe" aria-label="最近高亮 2"></button>
+                    <button type="button" data-color="#fef3c7" style="--swatch:#fef3c7" aria-label="最近高亮 3"></button>
+                  </div>
+                  <label class="custom-color">自定义<input type="color" value="#ede9fe" aria-label="自定义高亮颜色"></label>
+                </div>
+              </details>
+            </div>
+          </div>
+          <span class="toolbar-divider" aria-hidden="true"></span>
+          <div class="toolbar-group rich-toolbar-group">
+            <button type="button" data-rich-action="clear-format" title="清除格式" aria-label="清除格式"><i data-lucide="eraser"></i></button>
+            <div class="toolbar-popover-control">
+              <button id="quick-link" type="button" data-rich-action="link" title="添加链接" aria-label="添加链接" aria-expanded="false"><i data-lucide="link-2"></i></button>
+              <form id="link-popover" class="link-popover" hidden>
+                <label for="link-url">链接地址</label>
+                <div>
+                  <input id="link-url" type="url" inputmode="url" placeholder="https://example.com" autocomplete="off">
+                  <button type="submit" class="link-apply" title="应用链接" aria-label="应用链接"><i data-lucide="check"></i></button>
+                  <button type="button" class="link-remove" data-link-action="remove" title="移除链接" aria-label="移除链接"><i data-lucide="unlink"></i></button>
+                </div>
+                <span id="link-error" role="alert" hidden>仅支持 http、https 和 mailto 链接</span>
+              </form>
+            </div>
+            <button type="button" data-rich-mark="code" title="行内代码" aria-label="行内代码"><i data-lucide="code-2"></i></button>
+          </div>
+          <span class="toolbar-divider" aria-hidden="true"></span>
+          <div class="toolbar-group paragraph-toolbar-group">
+            <button type="button" class="toolbar-menu-button" data-rich-block="bullet-list-item" title="列表" aria-label="列表"><i data-lucide="list"></i><i class="toolbar-chevron" data-lucide="chevron-down"></i></button>
+            <button type="button" class="toolbar-menu-button" data-rich-align="left" title="对齐" aria-label="对齐"><i data-lucide="align-left"></i><i class="toolbar-chevron" data-lucide="chevron-down"></i></button>
+          </div>
+          </div>
+        </div>
+
+        <div class="canvas-controls" aria-label="缩放控制">
+          <button id="zoom-out" class="icon-button" type="button" title="缩小" aria-label="缩小"><i data-lucide="minus"></i></button>
+          <label class="zoom-control"><input id="zoom-percent" type="number" min="10" max="400" step="5" value="100" aria-label="缩放百分比"><span>%</span></label>
+          <button id="zoom-in" class="icon-button" type="button" title="放大" aria-label="放大"><i data-lucide="plus"></i></button>
+          <button id="fit" class="icon-button" type="button" title="适应全部 (0)" aria-label="适应全部"><i data-lucide="scan"></i></button>
+          <button id="fit-selection" class="icon-button" type="button" title="适应选中 (Shift+0)" aria-label="适应选中"><i data-lucide="focus"></i></button>
+          <button id="actual-size" class="icon-button" type="button" title="回到 100% (1)" aria-label="回到100%"><i data-lucide="circle-dot"></i></button>
+        </div>
+
+        <div class="minimap-shell">
+          <div class="minimap-header"><span>导航</span><button id="toggle-minimap" type="button" title="收起小地图" aria-label="收起小地图"><i data-lucide="chevron-down"></i></button></div>
+          <div id="minimap" class="minimap"></div>
+        </div>
+
+        <div id="canvas-empty" class="canvas-empty" hidden>
+          <i data-lucide="network"></i><strong>当前视图没有可见节点</strong><button id="empty-add" type="button">新建模块</button>
+        </div>
+      </section>
+    </main>
+
+    <aside class="inspector" aria-label="属性检查器">
+      <div id="right-resizer" class="panel-resizer panel-resizer-left" role="separator" aria-label="调整检查器宽度"></div>
+      <div class="inspector-header">
+        <span id="inspector-kicker">当前视图</span>
+        <strong id="inspector-title">架构图</strong>
+        <p id="inspector-subtitle">选择节点、关系或图层以查看和编辑属性</p>
+      </div>
+      <div class="panel-tabs inspector-tabs" role="tablist" aria-label="检查器视图">
+        <button class="is-active" type="button" data-inspector-tab="details" role="tab">详情</button>
+        <button type="button" data-inspector-tab="relations" role="tab">关系</button>
+        <button type="button" data-inspector-tab="evidence" role="tab">证据</button>
+        <button type="button" data-inspector-tab="style" role="tab">样式</button>
+        <button type="button" data-inspector-tab="history" role="tab">历史</button>
+      </div>
+      <div id="inspector-content" class="inspector-content"></div>
+    </aside>
+
+    <footer class="statusbar">
+      <span id="tool-status"><i data-lucide="mouse-pointer-2"></i>选择工具</span>
+      <span id="selection-hint">空白拖动框选，Space 拖动画布</span>
+      <span class="status-spacer"></span>
+      <span id="background-status"></span>
+      <button id="toggle-grid" type="button" title="切换网格吸附"><i data-lucide="grid-3x3"></i><span>8px</span></button>
+      <span id="validation-status" class="status-ok"><i data-lucide="circle-check"></i>结构有效</span>
+    </footer>
+  </div>
+
+  <dialog id="command-palette" class="command-palette">
+    <label><i data-lucide="search"></i><input id="command-search" placeholder="输入命令…" autocomplete="off"></label>
+    <div id="command-list" class="command-list"></div>
+  </dialog>
+
+  <dialog id="project-dialog" class="project-library-dialog" aria-labelledby="project-dialog-title">
+    <div class="project-library-header">
+      <div>
+        <strong id="project-dialog-title">新建或打开项目</strong>
+        <span>保存在 App 根目录的 projects 文件夹</span>
+      </div>
+      <button id="project-cancel" class="icon-button" type="button" title="取消" aria-label="取消并关闭项目窗口"><i data-lucide="x"></i></button>
+    </div>
+    <form id="project-form" class="project-library-tools">
+      <label class="project-name-field">
+        <i data-lucide="file-plus-2" aria-hidden="true"></i>
+        <span class="sr-only">项目名称</span>
+        <input id="project-name" type="text" name="projectName" maxlength="80" placeholder="输入空白项目名称" autocomplete="off" required>
+      </label>
+      <button class="project-primary-button" type="submit"><i data-lucide="plus"></i>新建项目</button>
+    </form>
+    <div id="project-list" class="project-list" role="list" aria-live="polite">
+      <div id="project-list-empty" class="project-list-empty">
+        <span class="project-empty-icon"><i data-lucide="folder-plus"></i></span>
+        <strong>还没有本地项目</strong>
+        <span>创建空白项目后会自动出现在这里</span>
+        <button type="button" data-project-action="focus-name"><i data-lucide="plus"></i>新建空白项目</button>
+      </div>
+    </div>
+    <footer class="project-library-footer">
+      <span><i data-lucide="hard-drive"></i>projects/</span>
+      <span id="project-count">0 个项目</span>
+    </footer>
+  </dialog>
+
+  <dialog id="unsaved-dialog" class="unsaved-dialog" aria-labelledby="unsaved-dialog-title">
+    <div class="unsaved-dialog-icon"><i data-lucide="triangle-alert"></i></div>
+    <div class="unsaved-dialog-copy">
+      <strong id="unsaved-dialog-title">保存当前修改？</strong>
+      <p>切换项目会关闭当前画布。你可以先保存到 projects/，也可以放弃本次修改。</p>
+    </div>
+    <div class="unsaved-dialog-actions">
+      <button type="button" data-unsaved-choice="cancel">取消</button>
+      <button type="button" class="danger-button" data-unsaved-choice="discard">放弃修改</button>
+      <button type="button" class="primary-button" data-unsaved-choice="save"><i data-lucide="save"></i>保存并继续</button>
+    </div>
+  </dialog>
+
+  <div id="context-menu" class="context-menu" hidden></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <!--__MINDMAP_EDITABLE_DIAGRAM_PLACEHOLDER__-->
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
