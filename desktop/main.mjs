@@ -105,8 +105,12 @@ function openExternalSafely(url) {
   }
 }
 
-function jsonFilters() {
-  return [{ name: "MindMap diagram JSON", extensions: ["json"] }];
+function diagramFilters() {
+  return [
+    { name: "MindMap diagram or editable HTML", extensions: ["json", "html", "htm"] },
+    { name: "MindMap diagram JSON", extensions: ["json"] },
+    { name: "MindMap editable HTML", extensions: ["html", "htm"] },
+  ];
 }
 
 function normalizeJsonPath(filePath) {
@@ -122,23 +126,28 @@ function assertJsonValue(value) {
   return JSON.stringify(value, null, 2);
 }
 
-async function readJsonFile(filePath) {
+async function readDiagramDocument(filePath) {
   const content = await fs.readFile(filePath, "utf8");
-  return JSON.parse(content);
+  if (/\.html?$/i.test(filePath)) {
+    if (Buffer.byteLength(content) > 64 * 1024 * 1024) {
+      throw new Error("Editable HTML exceeds the 64MB import limit.");
+    }
+    return { format: "html", html: content };
+  }
+  return { format: "json", diagram: JSON.parse(content) };
 }
 
 function registerJsonIpc() {
   ipcMain.handle("mindmap:open-json", async () => {
     const result = await dialog.showOpenDialog({
-      title: "Open MindMap diagram",
+      title: "Open MindMap diagram or editable HTML",
       properties: ["openFile"],
-      filters: jsonFilters()
+      filters: diagramFilters()
     });
     if (result.canceled || result.filePaths.length === 0) return { ok: false, canceled: true };
     const filePath = result.filePaths[0];
     try {
-      const diagram = await readJsonFile(filePath);
-      return { ok: true, filePath, diagram };
+      return { ok: true, filePath, ...await readDiagramDocument(filePath) };
     } catch (error) {
       return { ok: false, filePath, error: error.message };
     }

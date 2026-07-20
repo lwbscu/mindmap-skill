@@ -33,6 +33,33 @@ Create the first pass before deep details:
 
 Prefer a readable incomplete map over a dense inventory.
 
+## Composition By View
+
+Choose one composition grammar before positioning nodes and keep it stable within the view.
+
+### MindMap
+
+- Establish one root and 3-7 first-level branches before adding leaves.
+- Keep sibling concepts at comparable semantic depth; do not mix a subsystem, a file, and a sentence-length note at the same level.
+- Prefer four visible levels or fewer. Collapse or split branches when a parent would exceed nine direct children.
+- Use balanced two-sided, one-sided, or radial composition consistently. Reserve enough whitespace for curved fan-out before placing labels.
+
+### Dependency Graph
+
+- Select one dominant flow direction (`LR` or `TB`) from the dependency semantics.
+- Place providers/upstream units before consumers/downstream units and isolate external dependencies at the perimeter.
+- Group by package, runtime, ownership, or deployment boundary. Use focused views for hubs, cycles, and dense transitive relations.
+- Keep reverse dependencies and cycles explicit rather than bending them into the primary direction.
+
+### Architecture Diagram
+
+- Build 3-7 meaningful horizontal or vertical layer bands when the evidence supports them.
+- Put 2-5 primary nodes in a row, align same-role nodes, and keep node sizes consistent inside each layer.
+- Place entry/interface first, core execution next, and data/storage/observability/success criteria last. Put external systems at the boundary.
+- Route the main flow through layer gaps and consistent ports. Avoid diagonal shortcuts and cross-layer edge bundles.
+
+For every view, use the numerical spacing, typography, density, routing, and screenshot criteria in `quality-ratchet.md`. When the whole system cannot fit those limits, create saved views or drill-down diagrams instead of compressing the architecture.
+
 ## Node Selection
 
 Use one node when a concept is a stable architectural unit. Split nodes only when parts have different responsibilities, evidence, owners, data contracts, or failure modes.
@@ -80,7 +107,7 @@ Use edge relations consistently in notes and labels:
 - `observes`: logs, metrics, traces, monitoring
 - `unknown`: relation exists but is not yet confirmed
 
-Use explicit waypoints when an arrow might cross a node, label, or layer title.
+Let the App reroute an arrow when it might cross a node, image, label, or layer title. Add explicit waypoints only after the user manually confirms the route, then preserve it as a locked route.
 
 ## Evidence Rules
 

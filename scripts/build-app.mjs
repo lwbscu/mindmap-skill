@@ -7,6 +7,7 @@ import { assertValidDiagram } from "../app/diagram-validator.mjs";
 import { renderStandaloneHtml, renderSvg } from "../app/render-svg.mjs";
 import { ensureViews } from "../app/views/view-model.mjs";
 import { resolveView } from "../app/views/view-resolver.mjs";
+import { buildEditableTemplate } from "./editable-template-builder.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
@@ -89,13 +90,17 @@ const redirect = `<!doctype html>
 `;
 await fs.writeFile(path.join(dist, "index.html"), redirect, "utf8");
 
+const editableTemplate = await buildEditableTemplate({ root, appRoot, appOut });
+
 console.log(JSON.stringify({
   ok: true,
   dist,
   copied: {
     app: appOut,
     examples: copiedExamples,
-    icon: path.join(appOut, "assets", "mindmap.png")
+    icon: path.join(appOut, "assets", "mindmap.png"),
+    editableTemplate: editableTemplate.path
   },
+  editableTemplate,
   generated
 }, null, 2));

@@ -62,7 +62,7 @@
         <div class="menu-panel menu-panel-right project-menu-panel">
           <button id="new-project-button" type="button"><i data-lucide="file-plus-2"></i>新建空白项目 <kbd>Ctrl N</kbd></button>
           <button id="projects-button" type="button"><i data-lucide="folder-tree"></i>最近 / 本地项目</button>
-          <button id="open-file-button" type="button"><i data-lucide="file-input"></i>导入 Diagram JSON</button>
+          <button id="open-file-button" type="button"><i data-lucide="file-input"></i>导入 Diagram JSON / HTML</button>
           <hr>
           <div class="menu-section-label">最近项目</div>
           <div id="recent-project-menu" class="project-menu-list" aria-live="polite">
@@ -71,7 +71,7 @@
           <div class="project-root-hint" title="项目保存在 App 根目录的 projects 文件夹"><i data-lucide="hard-drive"></i><span>projects/</span></div>
         </div>
       </details>
-      <input id="open-file" type="file" accept="application/json,.json" hidden>
+      <input id="open-file" type="file" accept="application/json,.json,text/html,.html,.htm" hidden>
       <input id="image-file" type="file" accept="image/png,image/jpeg,image/webp" hidden>
       <details class="export-menu compact-menu">
         <summary class="icon-button" title="导出" aria-label="导出"><i data-lucide="download"></i></summary>
@@ -80,7 +80,8 @@
           <button type="button" data-export="png"><i data-lucide="image"></i>PNG</button>
           <button type="button" data-export="pdf"><i data-lucide="file-text"></i>PDF</button>
           <button type="button" data-export="json"><i data-lucide="braces"></i>Diagram JSON</button>
-          <button type="button" data-export="html"><i data-lucide="file-code-2"></i>独立 HTML</button>
+          <button type="button" data-export="html"><i data-lucide="file-code-2"></i>独立 HTML（只读）</button>
+          <button type="button" data-export="editable-html"><i data-lucide="panels-top-left"></i>可编辑 HTML（完整 App）</button>
           <button type="button" data-export="mermaid"><i data-lucide="workflow"></i>Mermaid</button>
           <hr>
           <button id="copy-summary" type="button"><i data-lucide="clipboard-copy"></i>复制摘要</button>
@@ -374,6 +375,7 @@
   <div id="context-menu" class="context-menu" hidden></div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
+  <!--__MINDMAP_EDITABLE_DIAGRAM_PLACEHOLDER__-->
   <script type="module" src="./app.js"></script>
 </body>
 </html>

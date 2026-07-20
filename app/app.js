@@ -27,6 +27,12 @@ import "./styles.css";
 
 import { assertValidDiagram, validateDiagram } from "./diagram-validator.mjs";
 import { renderStandaloneHtml, renderSvg } from "./render-svg.mjs";
+import {
+  extractEmbeddedDiagramFromHtml,
+  loadEditableHtmlTemplate,
+  readEmbeddedDiagramFromDocument,
+  renderEditableHtml,
+} from "./editable-html.mjs";
 import { command, createCommandHistory } from "./editor/command-history.mjs";
 import { copySubgraph, pasteSubgraph } from "./editor/clipboard.mjs";
 import { createInlineEditor } from "./editor/inline-editing.mjs";
@@ -2198,6 +2204,14 @@ function exportHtml() {
   downloadBlob(new Blob([renderStandaloneHtml(blueprint, renderSvg(blueprint))], { type: "text/html" }), `${slug(diagram.title)}.html`);
 }
 
+async function exportEditableHtml() {
+  syncGraphLayoutToDiagram();
+  const template = await loadEditableHtmlTemplate();
+  const html = renderEditableHtml(template, diagram);
+  downloadBlob(new Blob([html], { type: "text/html" }), `${slug(diagram.title)}.editable.html`);
+  showToast("可编辑 HTML 已导出");
+}
+
 function mermaidFor(blueprint) {
   const lines = ["flowchart TD"];
   for (const node of blueprint.nodes) {
@@ -2345,10 +2359,21 @@ async function openDiagram() {
   if (window.mindmapDesktop?.isDesktop) {
     const result = await window.mindmapDesktop.openJson();
     if (result?.ok) {
+      let openedDiagram;
+      try {
+        openedDiagram = result.diagram || (result.html ? extractEmbeddedDiagramFromHtml(result.html) : null);
+      } catch (error) {
+        showError(error);
+        return;
+      }
+      if (!openedDiagram) {
+        showError("打开的文件不包含 MindMap diagram。");
+        return;
+      }
       const imported = window.mindmapDesktop.projects?.create
-        ? await window.mindmapDesktop.projects.create({ name: result.diagram?.title || "导入项目", diagram: result.diagram })
-        : result;
-      if (imported?.ok) return loadDiagram(imported.diagram || result.diagram, { filePath: imported.filePath, fit: true });
+        ? await window.mindmapDesktop.projects.create({ name: openedDiagram.title || "导入项目", diagram: openedDiagram })
+        : { ...result, diagram: openedDiagram };
+      if (imported?.ok) return loadDiagram(imported.diagram || openedDiagram, { filePath: imported.filePath, fit: true });
       showError(imported?.error || "导入项目失败");
       return;
     }
@@ -2385,6 +2410,16 @@ function loadDiagram(input, options = {}) {
 
 async function loadDefault() {
   try {
+    const embedded = readEmbeddedDiagramFromDocument();
+    if (embedded) {
+      loadDiagram(embedded, { fit: true });
+      return;
+    }
+  } catch (error) {
+    showError(error);
+    return;
+  }
+  try {
     const stored = await migrateLegacyDraft(LAST_DIAGRAM_KEY, LAST_FILE_KEY);
     const draft = stored?.diagram ? stored : await loadDraft();
     if (draft?.diagram) {
@@ -2412,6 +2447,7 @@ function commandDefinitions() {
     ["自动布局", "L", autoLayout], ["适应全部", "0", fitAll], ["适应选中", "Shift+0", fitSelection],
     ["保存", "Ctrl/Cmd+S", () => saveDiagram(false)], ["另存为", "Ctrl/Cmd+Shift+S", () => saveDiagram(true)], ["打开", "Ctrl/Cmd+O", openDiagram],
     ["导出 SVG", "", exportSvg], ["导出 PNG", "", exportPng], ["导出 PDF", "", exportPdf], ["导出 Mermaid", "", exportMermaid],
+    ["导出可编辑 HTML", "", exportEditableHtml],
   ];
 }
 
@@ -2621,7 +2657,11 @@ function bindDomEvents() {
   openFileInput.addEventListener("change", async () => {
     const file = openFileInput.files?.[0];
     if (!file) return;
-    try { loadDiagram(JSON.parse(await file.text()), { filePath: file.name, fit: true }); } catch (error) { showError(error); }
+    try {
+      const text = await file.text();
+      const isHtml = /\.html?$/i.test(file.name) || file.type === "text/html";
+      loadDiagram(isHtml ? extractEmbeddedDiagramFromHtml(text) : JSON.parse(text), { filePath: file.name, fit: true });
+    } catch (error) { showError(error); }
     openFileInput.value = "";
   });
   imageFileInput.addEventListener("change", async () => {
@@ -2633,7 +2673,7 @@ function bindDomEvents() {
   });
   $("#copy-summary").addEventListener("click", () => copySummary().catch(showError));
   for (const button of $$('[data-export]')) button.addEventListener("click", () => {
-    const actions = { svg: exportSvg, png: exportPng, pdf: exportPdf, json: exportJson, html: exportHtml, mermaid: exportMermaid };
+    const actions = { svg: exportSvg, png: exportPng, pdf: exportPdf, json: exportJson, html: exportHtml, "editable-html": exportEditableHtml, mermaid: exportMermaid };
     Promise.resolve(actions[button.dataset.export]?.()).catch(showError);
     button.closest("details")?.removeAttribute("open");
   });
@@ -3040,7 +3080,7 @@ async function init() {
   setTool("select");
   updateHistoryButtons();
   await loadDefault();
-  if ("serviceWorker" in navigator && location.protocol !== "mindmap:") {
+  if ("serviceWorker" in navigator && ["http:", "https:"].includes(location.protocol)) {
     navigator.serviceWorker.register("./service-worker.js").catch(() => {
       // Offline caching is optional; the editor remains fully usable without it.
     });

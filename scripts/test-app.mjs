@@ -314,6 +314,8 @@ assert.ok(benchmarkMs < 5000, `1000-node fallback layout took ${benchmarkMs.toFi
 
 const build = await runNode(path.join(root, "scripts", "build-app.mjs"));
 assert.equal(build.code, 0, `${build.stdout}\n${build.stderr}`);
+const editableHtml = await runNode(path.join(root, "scripts", "test-editable-html.mjs"));
+assert.equal(editableHtml.code, 0, `${editableHtml.stdout}\n${editableHtml.stderr}`);
 const appIndex = await fs.readFile(path.join(root, "app", "index.html"), "utf8");
 const appScript = await fs.readFile(path.join(root, "app", "app.js"), "utf8");
 const appStyles = await fs.readFile(path.join(root, "app", "styles.css"), "utf8");

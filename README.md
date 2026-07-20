@@ -1,6 +1,6 @@
 # MindMap
 
-MindMap is an interactive desktop app and agent skill for making evidence-based architecture maps. Agents produce a compact diagram JSON file, and the app renders it as a clean, zoomable structure diagram with SVG and standalone HTML exports.
+MindMap is an interactive desktop and web app plus an agent skill for making evidence-based architecture maps. Agents produce a compact diagram JSON file, and the shared editor renders it as a clean, zoomable structure diagram with static exports and a self-contained editable HTML export.
 
 MindMap 是一个面向 Claude Code 与 Codex 的本地桌面结构框图工具。它把用户描述、代码、文档和日志里的可验证事实整理为 `mindmap-app/v1` diagram JSON，并用 Electron 桌面窗口渲染成白底大字、分层清晰、箭头不遮挡的结构框图。
 
@@ -11,9 +11,9 @@ MindMap 是一个面向 Claude Code 与 Codex 的本地桌面结构框图工具�
 - Switch between MindMap, dependency, and architecture views over one shared graph, with per-view camera, layout, filters, hidden state, and saved views.
 - Work in a focused infinite canvas with rectangle/lasso selection, multi-node dragging, pan/zoom, ports, grouping, grid snapping, search, minimap, and responsive inspectors.
 - Edit node titles and descriptions in place with double-click or `F2`. The Word-style floating toolbar applies fonts, 8-96px sizes, emphasis, lists, alignment, safe links, code, text colors, and highlights to the current character selection without losing focus. Node fill, border, and radius stay in the inspector.
-- Paste, upload, or drag PNG/JPEG/WebP images into nodes or onto the canvas. Assets are hash-deduplicated and embedded in JSON; image nodes remain connectable and export to SVG, PNG, PDF, JSON, and standalone HTML.
+- Paste, upload, or drag PNG/JPEG/WebP images into nodes or onto the canvas. Assets are hash-deduplicated and embedded in JSON; image nodes remain connectable and export to SVG, PNG, PDF, JSON, static HTML, and editable HTML.
 - Route architecture/dependency edges with orthogonal obstacle avoidance and MindMap branches with smooth curves. Manual bends can be locked and later returned to automatic routing.
-- Use XMind-style topic creation in MindMap view: `Tab` adds a child and `Enter` adds a sibling. Use 100-step undo/redo and continuous paste offsets, run automatic layouts, and export SVG, PNG, PDF, JSON, standalone HTML, or Mermaid.
+- Use XMind-style topic creation in MindMap view: `Tab` adds a child and `Enter` adds a sibling. Use 100-step undo/redo and continuous paste offsets, run automatic layouts, and export SVG, PNG, PDF, JSON, read-only HTML, editable HTML, or Mermaid.
 - Validate diagrams at script runtime, including every example, node IDs, edge references, status tags, and relation tags.
 - Install MindMap as a local desktop launcher on Linux.
 - Publish the static app to GitHub Pages without runtime dependencies.
@@ -81,7 +81,24 @@ Remove the desktop launcher:
 npm run app:uninstall-desktop
 ```
 
-The app also includes a web manifest, service worker, and PNG application icon for hosted `/app/` deployments.
+## Web Editor And Editable HTML
+
+The GitHub Pages build is the same editor as the desktop app, not a read-only preview. Build and run it locally with:
+
+```bash
+npm run app:serve
+```
+
+Open the printed URL and edit directly in the browser. The generated [`dist/index.html`](dist/index.html) redirects to the interactive [`dist/app/`](dist/app/) editor, so the same artifact can be published under a GitHub Pages repository subpath. Browser `Ctrl/Cmd+S` downloads the complete diagram JSON; it does not request arbitrary filesystem or GitHub write access.
+
+The export menu intentionally provides two HTML choices:
+
+- **独立 HTML（只读）** exports the current rendered view as a lightweight presentation artifact.
+- **可编辑 HTML（完整 App）** exports one self-contained `.editable.html` file with the editor runtime, diagram JSON, all views, rich text, images, and route state. Open it directly from `file://`, continue editing, and export another editable HTML or import it back into MindMap.
+
+Editable HTML has no external JS, CSS, worker, image, or server dependency. Imported HTML is accepted only when it contains the known `script#mindmap-embedded-diagram` data block; MindMap parses that JSON without executing scripts from the imported document. The app rejects exports above 64MB and retains the existing 32MB total embedded-image budget.
+
+The app also includes a web manifest, service worker, and PNG application icon for hosted `/app/` deployments. The service worker caches the editable template so one-click editable export remains available after the hosted app has been loaded once.
 
 Build the GitHub Pages artifact:
 
@@ -130,12 +147,13 @@ See [`references/diagram-schema.md`](references/diagram-schema.md) for the contr
 ```bash
 npm run check
 npm test
+npm run app:test-editable
 npm run app:smoke
 npm run app:visual
 npm run app:build
 ```
 
-The test suite validates all examples, renders SVG/HTML, exercises geometry, camera, history, clipboard remapping, view migration, shortest paths and ELK layout, then runs real Electron input smoke tests. `npm run app:visual` captures 1440x900, 1024x768, 760x720, and 390x760 responsive screenshots.
+The test suite validates all examples, renders SVG/HTML, exercises geometry, camera, history, clipboard remapping, view migration, shortest paths and ELK layout, then runs real Electron input smoke tests. `npm run app:test-editable` opens the web editor over HTTP and the single-file editor over `file://`, edits nodes, saves/re-exports, and verifies assets and all views survive. `npm run app:visual` captures 1440x900, 1024x768, 760x720, and 390x760 responsive screenshots.
 
 ## License
 

@@ -1,6 +1,6 @@
 # Diagram Schema
 
-MindMap uses `mindmap-app/v1` JSON. The app renders this JSON into an interactive local app-window diagram and supports SVG / standalone HTML export.
+MindMap uses `mindmap-app/v1` JSON. The shared Electron/Web editor renders this JSON interactively and supports static exports plus a self-contained editable HTML artifact.
 
 Diagrams are validated at script runtime by `app/diagram-validator.mjs`. The
 validator is intentionally stricter than the renderer: render-only fields can be
@@ -220,6 +220,10 @@ Default to `routeMode: "auto"`. Architecture and dependency views use orthogonal
 
 - The app must not require a server-side runtime.
 - All app imports and fetches must be relative-path friendly for GitHub Pages.
+- The hosted `/app/` artifact is a full interactive editor. Browser save downloads JSON and does not imply direct filesystem or GitHub write access.
 - The default example lives under `examples/`.
 - Generated Pages artifacts live under `dist/` and are not committed.
-- SVG, PNG, PDF, JSON, and standalone HTML exports carry embedded images and supported rich text; Mermaid degrades images to their node title and alt text.
+- SVG, PNG, PDF, JSON, and read-only HTML exports carry embedded images and supported rich text; Mermaid degrades images to their node title and alt text.
+- Editable HTML uses format marker `mindmap-editable-html/v1` and exactly one `script#mindmap-embedded-diagram[type="application/json"]` containing the complete diagram. It inlines the app runtime, CSS, icon, and layout worker, has no external runtime dependency, opens from `file://`, and can re-export itself.
+- HTML import parses only the known embedded JSON script and never executes imported scripts. Diagram JSON is escaped for script context, including `<`, `>`, `&`, U+2028, and U+2029.
+- Editable HTML preserves top-level `assets`, `views`, `savedViews`, rich text, evidence, automatic and locked route state. The exporter rejects files above 64MB.

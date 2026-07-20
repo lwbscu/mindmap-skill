@@ -1,7 +1,7 @@
 interface:
   display_name: "MindMap"
   short_description: "Build reliable interactive architecture maps"
-  default_prompt: "Use $mindmap-skill and its visual, Word-style local rich-text, media, and routing contracts to create or safely update an evidence-backed interactive architecture map."
+  default_prompt: "Use $mindmap-skill to create or safely update an evidence-backed interactive architecture map in the shared desktop/Web editor. Enforce its quantified visual contract and pass/fail quality ratchet: clean white canvas, large readable type, aligned stable geometry, restrained semantic color, view-specific composition, collision-free routing, safe rich text/media, responsive screenshot review, and export consistency. When an editable handoff is needed, use the self-contained editable HTML contract and verify offline edit/re-export roundtrip. Do not finalize a diagram that fails the gate."
 
 policy:
   allow_implicit_invocation: true

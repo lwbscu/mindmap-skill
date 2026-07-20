@@ -1,9 +1,10 @@
-const CACHE_NAME = "mindmap-app-v8";
+const CACHE_NAME = "mindmap-app-v9";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./manifest.webmanifest",
   "./assets/mindmap.png",
+  "./editable-template.html",
   "../examples/rpent-libero-behavior.diagram.json"
 ];
 
